@@ -116,4 +116,12 @@ def test_each_flag_says_what_ran_why_and_which_rule(conn):
         "evidence": {"command": "s1-1"},
         "time": "2026-10-08T12:01:00.000+00:00",
         "project": "/p/a",
+        "outcome": {"kind": "unknown", "error": None},
     }
+
+
+def test_a_flag_shows_its_outcome_once_the_result_arrives(conn):
+    bash(conn, "/p/a", "s1", 1)
+    bash(conn, "/p/a", "s1", 1, hook="PostToolUse")
+    [flag] = digest(conn)["projects"][0]["sessions"][0]["flags"]
+    assert flag["outcome"] == {"kind": "ran", "error": None}

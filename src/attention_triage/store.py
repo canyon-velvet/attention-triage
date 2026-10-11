@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS events (
     install_scope TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
+-- earlier_events (rules) and outcome.py look up one session's events of a type.
+CREATE INDEX IF NOT EXISTS events_session ON events (session_id, event_type);
+-- outcome.py finds a call's result by its tool_use_id.
+CREATE INDEX IF NOT EXISTS events_tool_use ON events (session_id, tool_use_id);
 CREATE TABLE IF NOT EXISTS drift (
     hook_event TEXT NOT NULL,
     field TEXT NOT NULL,
