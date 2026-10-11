@@ -1,5 +1,15 @@
 // The shape of GET /api/digest (src/attention_triage/digest.py).
 
+// src/attention_triage/outcome.py; only the failed kinds have error text.
+export type OutcomeKind =
+  | "ran"
+  | "approved"
+  | "failed"
+  | "approved_failed"
+  | "denied_by_auto_mode"
+  | "denied_by_user"
+  | "unknown";
+
 export type Flag = {
   id: number;
   tool: string | null;
@@ -12,6 +22,7 @@ export type Flag = {
   evidence: Record<string, unknown>;
   time: string;
   project: string | null;
+  outcome: { kind: OutcomeKind; error: string | null };
 };
 
 export type Digest = {

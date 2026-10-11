@@ -14,6 +14,7 @@ export const flag: Flag = {
   evidence: { command: "rm -rf build" },
   time: "2026-10-09T15:13:12.434+00:00",
   project: "/p/main/.claude/worktrees/wt",
+  outcome: { kind: "ran", error: null },
 };
 
 afterEach(() => {

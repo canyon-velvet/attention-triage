@@ -31,11 +31,43 @@ test("other flags carry no visibility caveat", () => {
   expect(screen.queryByText(/not fully visible/i)).toBeNull();
 });
 
+test.each([
+  ["ran", "Ran without a prompt"],
+  ["approved", "Approved at a prompt"],
+  ["denied_by_auto_mode", "Denied by auto mode"],
+  ["denied_by_user", "Denied at the prompt"],
+  ["unknown", "Unknown or still running"],
+] as const)("outcome %s says what happened", (kind, text) => {
+  const { container } = render(<FlagItem flag={{ ...flag, outcome: { kind, error: null } }} />);
+  expect(screen.getByText(text)).toBeInTheDocument();
+  expect(container.querySelector(".outcome-error")).toBeNull();
+});
+
+test.each([
+  ["failed", "Failed"],
+  ["approved_failed", "Approved at a prompt, then failed"],
+] as const)("outcome %s shows the error, line breaks kept", (kind, text) => {
+  const error = "Exit code 1\ntouch: /x: Operation not permitted";
+  render(<FlagItem flag={{ ...flag, outcome: { kind, error } }} />);
+  expect(screen.getByText(text)).toBeInTheDocument();
+  const shown = screen.getByText(/Operation not permitted/);
+  expect(shown.tagName).toBe("PRE"); // keeps the line breaks on screen
+  expect(shown).toHaveTextContent(error, { normalizeWhitespace: false });
+});
+
 test("captured commands render as text, never as HTML", () => {
   const html = '<img src=x onerror="alert(1)">';
   const { container } = render(
-    <FlagItem flag={{ ...flag, target: html, stated_reason: html, evidence: { command: html } }} />,
+    <FlagItem
+      flag={{
+        ...flag,
+        target: html,
+        stated_reason: html,
+        evidence: { command: html },
+        outcome: { kind: "failed", error: html },
+      }}
+    />,
   );
   expect(container.querySelector("img")).toBeNull();
-  expect(screen.getAllByText(html, { exact: false })).toHaveLength(3);
+  expect(screen.getAllByText(html, { exact: false })).toHaveLength(4);
 });

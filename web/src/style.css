@@ -74,6 +74,23 @@ ul.flags {
   word-break: break-all;
 }
 
+.outcome {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.outcome-error {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 8rem;
+  overflow: auto;
+}
+
 .where {
   display: flex;
   gap: 1rem;
