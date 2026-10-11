@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -89,10 +90,19 @@ def test_dedup_key_separates_events_of_one_tool_call():
 
 
 def test_dedup_key_is_stable_for_a_redelivered_payload():
-    payload = load("default-prompt-approved-write/02-PermissionRequest.json")  # has no tool_use_id
+    payload = load("session-lifecycle/02-Stop.json")  # has no tool_use_id
     assert (
         normalize(payload)["dedup_key"] == normalize(dict(reversed(payload.items())))["dedup_key"]
     )
+
+
+def test_each_permission_request_firing_gets_its_own_key():
+    """Prompts for a call repeated in one turn are byte-identical; only the capture time differs."""
+    payload = load("default-prompt-approved-write/02-PermissionRequest.json")
+    first, again = (datetime(2026, 10, 8, 12, 0, s, tzinfo=UTC) for s in (0, 30))
+    key = normalize(payload, now=first)["dedup_key"]
+    assert key != normalize(payload, now=again)["dedup_key"]
+    assert key == normalize(dict(reversed(payload.items())), now=first)["dedup_key"]
 
 
 def test_unknown_event_and_bad_tool_input_pass_through():

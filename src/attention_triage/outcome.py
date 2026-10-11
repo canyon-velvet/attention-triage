@@ -54,11 +54,7 @@ def was_prompted(conn, event_key, session_id, tool_name, raw) -> bool:
     """A PermissionRequest has no tool_use_id, so it pairs with the call of the same session, tool
     and identical tool_input nearest to it in time. Nearest, not any: a session can repeat a call,
     unprompted after "don't ask again", and a request can be stored just before its call. `raw` is
-    dumped with sorted keys, so identical inputs extract to identical text.
-
-    Known limit: a call repeated in one turn and prompted again sends a byte-identical request,
-    which dedup drops as a redelivery, so the repeat reads as unprompted: ran or failed instead of
-    approved or approved_failed, and unknown instead of denied_by_user."""
+    dumped with sorted keys, so identical inputs extract to identical text."""
 
     def same_input(event_type: str) -> list[tuple[str, datetime]]:
         rows = conn.execute(
