@@ -4,6 +4,7 @@ import json
 import sqlite3
 
 from attention_triage.outcome import outcome
+from attention_triage.review import last_review, now
 
 
 def digest(conn: sqlite3.Connection) -> dict:
@@ -13,9 +14,12 @@ def digest(conn: sqlite3.Connection) -> dict:
 
     A git worktree's flags group under its main checkout (repo_root); each flag's `project` still
     names the worktree it ran in. Events stored before repo_root existed group by project_root."""
-    # TODO(#14): count from the last review; until "mark all reviewed" exists, every kept event.
+    # Taken first: "mark all reviewed" sends it back to start the next window, so actions stored
+    # while this page was open are counted next time, not skipped.
+    as_of = now()
+    since = last_review(conn)  # None before the first "mark all reviewed": every kept action
     [actions] = conn.execute(
-        "SELECT count(*) FROM events WHERE event_type = 'tool_call'"
+        "SELECT count(*) FROM events WHERE event_type = 'tool_call' AND ts > ?", [since or ""]
     ).fetchone()
     cursor = conn.execute(
         """
@@ -36,11 +40,13 @@ def digest(conn: sqlite3.Connection) -> dict:
         flag["outcome"] = outcome(conn, flag.pop("event_key"))
         projects.setdefault(repo, {}).setdefault(session_id, []).append(flag)
     return {
+        "as_of": as_of,
         # TODO(#21): captured = tool calls matched in the transcript; until then, every action.
         "headline": {
             "actions": actions,
             "captured": actions,
             "need_review": sum(len(f) for s in projects.values() for f in s.values()),
+            "since": since,
         },
         "projects": [
             {

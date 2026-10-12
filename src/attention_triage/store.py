@@ -93,6 +93,11 @@ CREATE TABLE IF NOT EXISTS flags (
     updated_at TEXT NOT NULL,
     UNIQUE (event_key, rule_id)
 );
+-- One row per "mark all reviewed"; the digest headline counts actions since the latest.
+CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY,
+    reviewed_at TEXT NOT NULL
+);
 """
 
 
