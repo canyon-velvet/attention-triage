@@ -26,7 +26,8 @@ export type Flag = {
 };
 
 export type Digest = {
-  headline: { actions: number; captured: number; need_review: number };
+  as_of: string; // when the digest was built; "mark all reviewed" starts the next window there
+  headline: { actions: number; captured: number; need_review: number; since: string | null };
   projects: {
     project: string | null;
     sessions: { session_id: string | null; flags: Flag[] }[];
@@ -38,3 +39,24 @@ export async function fetchDigest(): Promise<Digest> {
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
 }
+
+// Review actions (src/attention_triage/server.py). Same origin, so the server's CSRF check passes.
+async function post(path: string, body: unknown = {}): Promise<void> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
+export const dismissFlag = (id: number) => post(`/api/flags/${id}/dismiss`, { scope: "once" });
+
+export const acknowledgeFlag = (id: number) => post(`/api/flags/${id}/ack`);
+
+// Only what this page shows: flags that arrived since stay open for the next review.
+export const markAllReviewed = (digest: Digest) =>
+  post("/api/review/mark-all", {
+    flag_ids: digest.projects.flatMap((p) => p.sessions.flatMap((s) => s.flags.map((f) => f.id))),
+    as_of: digest.as_of,
+  });
