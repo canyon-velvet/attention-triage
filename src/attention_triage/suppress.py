@@ -145,10 +145,15 @@ def create(
         " VALUES (?, ?, ?, ?, ?, ?)",
         [rule_id, project, kind, pattern, note, ts],
     ).lastrowid
-    conn.execute(
-        "UPDATE flags SET status = 'dismissed', suppression_id = ?, updated_at = ? WHERE id = ?",
+    # Still open? An acknowledgement, a second click or a purge since the read above must win: the
+    # INSERT holds the write lock from here, and a closed flag undoes the suppression with it.
+    if not conn.execute(
+        "UPDATE flags SET status = 'dismissed', suppression_id = ?, updated_at = ?"
+        " WHERE id = ? AND status = 'open'",
         [suppression_id, ts, flag_id],
-    )
+    ).rowcount:
+        conn.rollback()
+        raise LookupError(flag_id)
     others = conn.execute(
         "SELECT f.id, f.evidence, e.target_kind, e.target"
         " FROM flags f JOIN events e ON e.dedup_key = f.event_key"

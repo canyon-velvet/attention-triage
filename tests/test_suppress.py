@@ -281,3 +281,21 @@ def test_only_an_open_flag_can_be_suppressed(conn):
         suppress.create(conn, flag_id)
     with pytest.raises(LookupError):
         suppress.create(conn, 999)
+
+
+def test_an_acknowledgement_saved_meanwhile_wins_and_nothing_is_suppressed(conn, monkeypatch):
+    """Another request acknowledges the flag after create() read it as open."""
+    flag_id = bypass(conn, "docker ps")
+    clean = suppress.clean
+
+    def acknowledge_meanwhile(*args):
+        with closing(store.connect()) as other:
+            other.execute("UPDATE flags SET status = 'acknowledged' WHERE id = ?", [flag_id])
+            other.commit()
+        return clean(*args)
+
+    monkeypatch.setattr(suppress, "clean", acknowledge_meanwhile)
+    with pytest.raises(LookupError):
+        suppress.create(conn, flag_id)
+    assert status(conn, flag_id) == ("acknowledged", None)
+    assert conn.execute("SELECT count(*) FROM suppressions").fetchone() == (0,)
