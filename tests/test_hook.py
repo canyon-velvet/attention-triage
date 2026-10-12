@@ -15,6 +15,8 @@ from attention_triage.redact import redact
 
 FIXTURES = Path(__file__).parent / "fixtures" / "payloads"
 ALL_FIXTURES = sorted(FIXTURES.glob("*/*.json"))
+# A PermissionRequest's key includes its capture time (normalize.dedup_key): each firing counts.
+REQUESTS = sorted(FIXTURES.glob("*/*-PermissionRequest.json"))
 HOOK = Path(sys.executable).parent / "triage-hook"  # the installed console script
 
 
@@ -32,12 +34,33 @@ def rows(home: Path, table: str = "events") -> list[sqlite3.Row]:
         return conn.execute(f"SELECT * FROM {table}").fetchall()
 
 
-@pytest.mark.parametrize("path", ALL_FIXTURES, ids=lambda p: f"{p.parent.name}/{p.name}")
+@pytest.mark.parametrize(
+    "path",
+    [p for p in ALL_FIXTURES if p not in REQUESTS],
+    ids=lambda p: f"{p.parent.name}/{p.name}",
+)
 def test_each_fixture_is_stored_exactly_once(tmp_path, path):
     assert run_hook(tmp_path, path.read_bytes()) == 0
     assert len(rows(tmp_path)) == 1
     assert run_hook(tmp_path, path.read_bytes()) == 0
     assert len(rows(tmp_path)) == 1
+
+
+def test_a_permission_request_fired_again_is_stored_again(tmp_path):
+    """The same call repeated in one turn and prompted again sends a byte-identical request."""
+    assert run_hook(tmp_path, REQUESTS[0].read_bytes()) == 0
+    assert run_hook(tmp_path, REQUESTS[0].read_bytes()) == 0
+    assert len(rows(tmp_path)) == 2
+
+
+def test_a_spooled_permission_request_is_stored_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    event = normalize(redact(json.loads(REQUESTS[0].read_text())))
+    with closing(store.connect()) as conn:
+        store.insert_event(conn, event)  # stored, then the run failed and spooled it
+    store.spool(event)
+    run_hook(tmp_path, (FIXTURES / "auto-webfetch" / "01-PreToolUse.json").read_bytes())
+    assert len(rows(tmp_path)) == 2 and spool_lines(tmp_path) == []
 
 
 def test_all_fixtures_get_distinct_rows(tmp_path):

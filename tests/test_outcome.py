@@ -116,3 +116,20 @@ def test_a_prompt_pairs_with_the_nearest_identical_call(conn):
     put(conn, payload(f"{folder}/03-PostToolUse.json", **again), 61)
     assert outcome(conn, first)["kind"] == "approved"
     assert outcome(conn, second)["kind"] == "ran"
+
+
+@pytest.mark.parametrize(
+    ("result", "kind"), [("03-PostToolUse.json", "approved"), (None, "denied_by_user")]
+)
+def test_a_call_repeated_in_one_turn_and_prompted_again_counts_its_own_prompt(conn, result, kind):
+    """Its request is byte-identical to the first call's, yet must still be stored."""
+    folder = "default-prompt-approved-write"
+    first = put_scenario(conn, folder, reverse=False)
+    again = {"tool_use_id": "toolu_again"}
+    second = put(conn, payload(f"{folder}/01-PreToolUse.json", **again), 30)
+    put(conn, payload(f"{folder}/02-PermissionRequest.json"), 31)
+    if result:
+        put(conn, payload(f"{folder}/{result}", **again), 32)
+    put(conn, stop(payload(f"{folder}/01-PreToolUse.json")["session_id"]), 40)
+    assert outcome(conn, first)["kind"] == "approved"
+    assert outcome(conn, second)["kind"] == kind

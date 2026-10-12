@@ -85,6 +85,7 @@ def normalize(payload: dict, now: datetime | None = None) -> dict:
         text(payload.get("cwd")),
     )
     root = project_root(cwd)
+    ts = (now or datetime.now(UTC)).isoformat(timespec="milliseconds")
     summary = {key: payload[key] for key in SUMMARY_KEYS if key in payload}
     if tool_input.get("dangerouslyDisableSandbox") is True:  # Bash only; absent when not set
         summary["sandbox_disabled"] = True
@@ -101,10 +102,10 @@ def normalize(payload: dict, now: datetime | None = None) -> dict:
         "project_root": root,
         "repo_root": repo_root(root),
         "cwd": cwd,
-        "ts": (now or datetime.now(UTC)).isoformat(timespec="milliseconds"),
+        "ts": ts,
         "summary": summary,
         "raw": raw,
-        "dedup_key": dedup_key(session_id, event_type, tool_use_id, raw),
+        "dedup_key": dedup_key(session_id, event_type, tool_use_id, raw, ts),
         "install_scope": INSTALL_SCOPE,
     }
 
@@ -138,10 +139,16 @@ def text(value) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def dedup_key(session_id, event_type, tool_use_id, raw: str) -> str:
+def dedup_key(session_id, event_type, tool_use_id, raw: str, ts: str) -> str:
     """Same tool call and event -> same key. Events without a tool_use_id, or whose event type is
-    unknown (it would merge a call's Pre and Post events), fall back to the full payload."""
+    unknown (it would merge a call's Pre and Post events), fall back to the full payload.
+
+    A PermissionRequest also adds its capture time: prompts for a call repeated in one turn are
+    byte-identical, and each one marks its own call as prompted (outcome.py). Replaying the spool
+    still stores it once, since a spooled event keeps the key it was given here."""
     parts = [AGENT, session_id, event_type, (tool_use_id if event_type else None) or raw]
+    if event_type == "permission_request":
+        parts.append(ts)
     return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
 
 
