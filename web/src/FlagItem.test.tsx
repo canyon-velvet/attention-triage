@@ -3,7 +3,12 @@ import { expect, test, vi } from "vitest";
 import { FlagItem } from "./FlagItem";
 import { flag } from "./testing";
 
-const actions = { busy: false, onDismiss: () => {}, onAcknowledge: () => {} };
+const actions = {
+  busy: false,
+  onDismiss: () => {},
+  onSuppress: async () => undefined,
+  onAcknowledge: () => {},
+};
 
 test("a flag item shows what ran, why, the rule and where", () => {
   render(<FlagItem {...actions} flag={flag} />);
@@ -61,12 +66,12 @@ test.each([
 test("the buttons dismiss or acknowledge, and wait while a review action is saved", () => {
   const onDismiss = vi.fn();
   const onAcknowledge = vi.fn();
-  const { rerender } = render(<FlagItem {...{ flag, busy: false, onDismiss, onAcknowledge }} />);
+  const { rerender } = render(<FlagItem {...actions} {...{ flag, onDismiss, onAcknowledge }} />);
   fireEvent.click(screen.getByRole("button", { name: "Fine — this one only" }));
   fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
   expect([onDismiss.mock.calls.length, onAcknowledge.mock.calls.length]).toEqual([1, 1]);
 
-  rerender(<FlagItem {...{ flag, busy: true, onDismiss, onAcknowledge }} />);
+  rerender(<FlagItem {...actions} {...{ flag, onDismiss, onAcknowledge }} busy />);
   for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
 });
 

@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { acknowledgeFlag, type Digest, dismissFlag, fetchDigest, markAllReviewed } from "./api";
+import {
+  acknowledgeFlag,
+  type Digest,
+  dismissFlag,
+  fetchDigest,
+  markAllReviewed,
+  suppressFlag,
+} from "./api";
 import { FlagItem } from "./FlagItem";
 
 export function Inbox() {
@@ -15,7 +22,8 @@ export function Inbox() {
 
   // Reload after every action, even a failed one: a 409 means the flag already changed. If the
   // reload fails, the last inbox stays on screen with the problem above it.
-  async function act(action: () => Promise<void>) {
+  // Returns the problem too, for a form to show next to itself (the top may be out of view).
+  async function act(action: () => Promise<void>): Promise<string | undefined> {
     setBusy(true);
     setActionError(undefined);
     const problems = [];
@@ -29,16 +37,20 @@ export function Inbox() {
     } catch (e) {
       problems.push(`Couldn't reload: ${(e as Error).message}`);
     }
-    setActionError(problems.join(" · ") || undefined);
+    const problem = problems.join(" · ") || undefined;
+    setActionError(problem);
     setBusy(false);
+    return problem;
   }
 
   if (error) return <p className="error">Couldn't load the digest: {error}</p>;
   if (!digest) return <p>Loading…</p>;
-  const { actions, captured, need_review, since } = digest.headline;
+  const { actions, captured, need_review, suppressed, since } = digest.headline;
+  // TODO(#16): link "N suppressed" to the Suppressions page.
+  const hidden = suppressed > 0 ? ` · ${suppressed} suppressed` : "";
   return (
     <main>
-      <h1>{`${actions} actions · ${captured} captured · ${need_review} need review`}</h1>
+      <h1>{`${actions} actions · ${captured} captured · ${need_review} need review${hidden}`}</h1>
       {since && (
         <p className="since">
           Since your last review, <time dateTime={since}>{new Date(since).toLocaleString()}</time>
@@ -65,6 +77,7 @@ export function Inbox() {
                     flag={flag}
                     busy={busy}
                     onDismiss={() => act(() => dismissFlag(flag.id))}
+                    onSuppress={(pattern, note) => act(() => suppressFlag(flag.id, pattern, note))}
                     onAcknowledge={() => act(() => acknowledgeFlag(flag.id))}
                   />
                 ))}

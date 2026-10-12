@@ -27,7 +27,13 @@ export type Flag = {
 
 export type Digest = {
   as_of: string; // when the digest was built; "mark all reviewed" starts the next window there
-  headline: { actions: number; captured: number; need_review: number; since: string | null };
+  headline: {
+    actions: number;
+    captured: number;
+    need_review: number;
+    suppressed: number; // hidden by "this and future ones" since the last review
+    since: string | null;
+  };
   projects: {
     project: string | null;
     sessions: { session_id: string | null; flags: Flag[] }[];
@@ -47,8 +53,18 @@ async function post(path: string, body: unknown = {}): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) {
+    // The server's reason, when it gives one in words (a refused pattern says why).
+    const detail = await response.json().then((b) => b?.detail, () => undefined);
+    throw new Error(`HTTP ${response.status}${typeof detail === "string" ? `: ${detail}` : ""}`);
+  }
 }
+
+export type Pattern = { kind: "exact" | "prefix" | "directory"; value: string };
+
+// "Fine → this and future ones". No pattern: the flag's exact target.
+export const suppressFlag = (id: number, pattern: Pattern | null, note: string) =>
+  post(`/api/flags/${id}/dismiss`, { scope: "future", pattern, note: note || null });
 
 export const dismissFlag = (id: number) => post(`/api/flags/${id}/dismiss`, { scope: "once" });
 

@@ -9,7 +9,7 @@ const AS_OF = "2026-10-12T09:00:00.000+00:00";
 function digest(flags = [flag], since: string | null = null, actions = 214): Digest {
   return {
     as_of: AS_OF,
-    headline: { actions, captured: actions, need_review: flags.length, since },
+    headline: { actions, captured: actions, need_review: flags.length, suppressed: 0, since },
     projects: flags.length
       ? [{ project: "/p/main", sessions: [{ session_id: "73eb2355-abcd", flags }] }]
       : [],
@@ -17,14 +17,16 @@ function digest(flags = [flag], since: string | null = null, actions = 214): Dig
 }
 
 /** Each load gets the next digest (the last one repeats; null = HTTP 500). Returns every request. */
-function serve(digests: (Digest | null)[], postStatus = 200) {
+function serve(digests: (Digest | null)[], postStatus = 200, postDetail?: unknown) {
   const requests: { method: string; url: string; body?: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       requests.push({ method, url, body: init?.body && JSON.parse(init.body as string) });
-      if (method === "POST") return { ok: postStatus === 200, status: postStatus };
+      if (method === "POST") {
+        return { ok: postStatus === 200, status: postStatus, json: async () => ({ detail: postDetail }) };
+      }
       const next = digests.length > 1 ? digests.shift() : digests[0];
       return next ? { ok: true, json: async () => next } : { ok: false, status: 500 };
     }),
@@ -110,6 +112,37 @@ test("a failed action says so, and the inbox reloads", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Acknowledge" }));
   expect(await screen.findByText("Couldn't save: HTTP 409")).toBeInTheDocument();
   expect(requests.map((r) => r.method)).toEqual(["GET", "POST", "GET"]);
+});
+
+test("fine for future ones saves a suppression, then the inbox reloads", async () => {
+  const requests = serve([digest(), digest([])]);
+  render(<Inbox />);
+  fireEvent.click(await screen.findByRole("button", { name: "Fine — this and future ones" }));
+  fireEvent.click(screen.getByRole("button", { name: "Don't flag again" }));
+  await screen.findByText("Nothing needs review.");
+  expect(requests[1]).toEqual({
+    method: "POST",
+    url: "/api/flags/1/dismiss",
+    body: { scope: "future", pattern: null, note: null },
+  });
+});
+
+test("a refused pattern shows the server's reason", async () => {
+  serve([digest()], 422, "`rm` can only match exactly");
+  render(<Inbox />);
+  fireEvent.click(await screen.findByRole("button", { name: "Fine — this and future ones" }));
+  fireEvent.click(screen.getByRole("button", { name: "Don't flag again" }));
+  // above the list, and in the form, which may be far below it
+  const reason = "Couldn't save: HTTP 422: `rm` can only match exactly";
+  expect(await screen.findAllByText(reason)).toHaveLength(2);
+});
+
+test("the headline counts what was suppressed", async () => {
+  const hidden = digest();
+  hidden.headline.suppressed = 3;
+  serve([hidden]);
+  render(<Inbox />);
+  expect(await screen.findByText("214 actions · 214 captured · 1 need review · 3 suppressed")).toBeInTheDocument();
 });
 
 test("if the reload after an action fails, the last inbox stays with the problem shown", async () => {
