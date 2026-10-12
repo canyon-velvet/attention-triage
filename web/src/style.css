@@ -97,6 +97,33 @@ ul.flags {
   flex-wrap: wrap;
 }
 
+button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.since {
+  color: var(--muted);
+  margin-top: -0.5rem;
+}
+
 .error {
   color: var(--high);
 }

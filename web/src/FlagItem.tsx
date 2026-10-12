@@ -12,7 +12,17 @@ const OUTCOMES: Record<OutcomeKind, string> = {
 
 // Everything here is captured from the agent, so it is only ever rendered as text: React escapes
 // `{...}` values. Never use dangerouslySetInnerHTML in this file.
-export function FlagItem({ flag }: { flag: Flag }) {
+export function FlagItem({
+  flag,
+  busy,
+  onDismiss,
+  onAcknowledge,
+}: {
+  flag: Flag;
+  busy: boolean; // a review action is being saved
+  onDismiss: () => void;
+  onAcknowledge: () => void;
+}) {
   return (
     <li className={`flag ${flag.severity}`}>
       <div className="what-ran">
@@ -42,6 +52,14 @@ export function FlagItem({ flag }: { flag: Flag }) {
       <div className="where">
         <time dateTime={flag.time}>{new Date(flag.time).toLocaleString()}</time>
         <span className="project">{flag.project}</span>
+      </div>
+      <div className="actions">
+        <button type="button" disabled={busy} onClick={onDismiss}>
+          Fine — this one only
+        </button>
+        <button type="button" disabled={busy} onClick={onAcknowledge}>
+          Acknowledge
+        </button>
       </div>
     </li>
   );
