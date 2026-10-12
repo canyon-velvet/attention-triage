@@ -2,13 +2,16 @@
 
 from contextlib import closing
 from pathlib import Path
+from typing import Literal
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from attention_triage import hook, store
+from attention_triage import hook, review, store
 from attention_triage.digest import digest
 
 # Loopback only: the digest shows commands, paths and URLs from every project.
@@ -21,10 +24,48 @@ app = FastAPI()
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost"])
 
 
+@app.middleware("http")
+async def same_origin_writes(request: Request, call_next):
+    """Any site the user visits can make the browser POST here, with our Host (CSRF), e.g. to
+    dismiss flags unseen. Browsers send an Origin on such writes; only the inbox's own is
+    accepted. A request without one (curl) isn't from another site's page."""
+    origin = request.headers.get("origin")
+    if request.method not in ("GET", "HEAD") and origin not in (
+        None,
+        f"http://{request.headers.get('host')}",
+    ):
+        return PlainTextResponse("Cross-origin write refused", status_code=403)
+    return await call_next(request)
+
+
 @app.get("/api/digest")
 def get_digest() -> dict:
     with closing(store.connect()) as conn:
         return digest(conn)
+
+
+class Dismiss(BaseModel):
+    scope: Literal["once"]  # TODO(#15): "future" creates a suppression
+
+
+@app.post("/api/flags/{flag_id}/dismiss")
+def dismiss(flag_id: int, body: Dismiss) -> dict:
+    return set_status(flag_id, "dismissed")
+
+
+@app.post("/api/flags/{flag_id}/ack")
+def acknowledge(flag_id: int) -> dict:
+    return set_status(flag_id, "acknowledged")
+
+
+def set_status(flag_id: int, status: str) -> dict:
+    with closing(store.connect()) as conn:
+        changed = review.set_status(conn, flag_id, status)
+    if changed is None:
+        raise HTTPException(404, "No such flag")
+    if not changed:
+        raise HTTPException(409, "Flag is not open")
+    return {"id": flag_id, "status": status}
 
 
 @app.get("/api/health")
