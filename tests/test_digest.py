@@ -57,7 +57,7 @@ def test_empty_db(conn):
     result = digest(conn)
     assert result.pop("as_of") > T0.isoformat()
     assert result == {
-        "headline": {"actions": 0, "captured": 0, "need_review": 0, "since": None},
+        "headline": {"actions": 0, "captured": 0, "need_review": 0, "suppressed": 0, "since": None},
         "projects": [],
     }
 
@@ -74,7 +74,13 @@ def test_open_flags_grouped_by_project_then_session_high_first(conn):
 
     result = digest(conn)
 
-    assert result["headline"] == {"actions": 6, "captured": 6, "need_review": 4, "since": None}
+    assert result["headline"] == {
+        "actions": 6,
+        "captured": 6,
+        "need_review": 4,
+        "suppressed": 0,
+        "since": None,
+    }
     assert shape(result) == [
         ("/p/b", [("s2", ["s2-0"])]),
         ("/p/a", [("s1", ["s1-2", "s1-1"]), ("s3", ["s3-4"])]),
