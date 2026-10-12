@@ -158,3 +158,126 @@ def test_a_later_command_with_a_masked_secret_or_a_cut_is_never_suppressed(conn)
 def test_a_flag_without_a_project_is_never_suppressed(conn):
     suppression(conn, "exact", "docker ps", project=None)
     assert status(conn, bypass(conn, "docker ps", project=None)) == ("open", None)
+
+
+@pytest.mark.parametrize(
+    ("flag", "kind", "pattern", "later"),
+    [
+        (("docker ps",), "exact", None, "docker ps"),
+        (("docker ps",), "prefix", " docker ", "docker compose up"),
+        (("/srv/data/a.txt", write), "directory", "/srv/data/", "/srv/data/sub/b.txt"),
+    ],
+)
+def test_creating_a_suppression_dismisses_the_flag_and_suppresses_later_matches(
+    conn, flag, kind, pattern, later
+):
+    target, flagged = flag if len(flag) == 2 else (flag[0], bypass)
+    first = flagged(conn, target)
+    suppression_id = suppress.create(conn, first, kind, pattern)
+    assert status(conn, first) == ("dismissed", suppression_id)
+    assert status(conn, flagged(conn, later)) == ("suppressed", suppression_id)
+
+
+def test_open_flags_that_match_are_suppressed_too(conn):
+    """One click covers repeats already waiting in the inbox."""
+    first, repeat, other = (bypass(conn, c) for c in ("docker ps", "docker ps", "docker ps -a"))
+    conn.execute("UPDATE flags SET status = 'acknowledged' WHERE id = ?", [repeat])
+    acknowledged = bypass(conn, "docker ps")
+    conn.execute("UPDATE flags SET status = 'acknowledged' WHERE id = ?", [acknowledged])
+    waiting = bypass(conn, "docker ps")
+
+    suppression_id = suppress.create(conn, first)
+
+    assert status(conn, waiting) == ("suppressed", suppression_id)
+    assert status(conn, other) == ("open", None)
+    assert status(conn, acknowledged) == ("acknowledged", None)
+
+
+@pytest.mark.parametrize(
+    ("command", "kind", "pattern", "problem"),
+    [
+        ("docker ps", "prefix", "git", "must match this flag's own target"),
+        ("docker ps", "prefix", "   ", "empty"),
+        ("docker ps", "directory", "/srv", "can't be used"),
+        ("docker ps", "glob", "*", "can't be used"),
+        ("docker ps && docker images", "prefix", "docker", "shell operators"),
+        # launchers run whatever follows them
+        ("bash -c 'make test'", "prefix", "bash", "can only match exactly"),
+        ("bash -c 'make test'", "prefix", "bash -c", "can only match exactly"),
+        ("sudo -E make", "prefix", "sudo -E", "can only match exactly"),
+        ("sudo -u root make", "prefix", "sudo -u root", "can only match exactly"),
+        ("timeout 10 make", "prefix", "timeout 10", "can only match exactly"),
+        ("env A=1 make", "prefix", "env A=1", "can only match exactly"),
+        ("/bin/bash -c 'make'", "prefix", "/bin/bash -c", "can only match exactly"),
+        ('"bash" -c make', "prefix", '"bash" -c', "can only match exactly"),
+        ("\\bash -c make", "prefix", "\\bash -c", "can only match exactly"),
+        ("A=1 make", "prefix", "A=1", "can only match exactly"),  # assignments only
+        # words the shell rewrites before choosing the program
+        *(
+            (f"{p} x", "prefix", p, "can only match exactly")
+            for p in (
+                'A="1 2" bash -c',
+                "$SHELL -c",
+                "${X}bash -c",
+                "/bin/ba?h -c",
+                "( bash -c",
+                "! bash -c",
+                "A+=1 bash -c",  # also an assignment
+                "=bash -c",  # zsh expands =bash to /bin/bash
+                "- bash -c",  # zsh runs what follows
+                "coproc bash -c",
+                "noglob bash -c",
+                "builtin eval",
+                ". ./setup.sh",
+                "source ./setup.sh",
+                "repeat 1 bash",  # zsh
+                "BASH -c",  # macOS finds it as bash
+                "/bin/BASH -c",
+                "Sudo make",
+            )
+        ),
+        # redaction: `--password="$(rm -rf ~)"` is stored the same way
+        ('mysql --password="hunter2" -e x', "exact", None, "hidden by redaction"),
+    ],
+)
+def test_a_pattern_that_cant_be_used_is_refused(conn, command, kind, pattern, problem):
+    flag_id = bypass(conn, command)
+    with pytest.raises(ValueError, match=problem):
+        suppress.create(conn, flag_id, kind, pattern)
+    assert status(conn, flag_id) == ("open", None)
+    assert conn.execute("SELECT count(*) FROM suppressions").fetchone() == (0,)
+
+
+def test_an_unlisted_domain_flag_matches_only_exactly(conn):
+    """R4 reviews hosts: a prefix would also cover a host added after it."""
+    flag_id = capture(conn, "Bash", {"command": "curl https://api.unlisted.dev/v1"})
+    with pytest.raises(ValueError, match="can't be used"):
+        suppress.create(conn, flag_id, "prefix", "curl https://api.unlisted.dev/v1")
+    suppress.create(conn, flag_id)
+    longer = "curl https://api.unlisted.dev/v1 https://evil.example"
+    assert status(conn, capture(conn, "Bash", {"command": longer})) == ("open", None)
+
+
+def test_a_flag_without_a_target_or_project_cant_be_suppressed(conn):
+    drifted = capture(conn, "Bash", {"command": ["not", "text"], "dangerouslyDisableSandbox": True})
+    with pytest.raises(ValueError, match="missing"):
+        suppress.create(conn, drifted, "prefix")
+    for project in (None, ""):  # no cwd, or an empty one
+        nowhere = bypass(conn, "docker ps", project=project)
+        with pytest.raises(ValueError, match="no project"):
+            suppress.create(conn, nowhere)
+
+
+@pytest.mark.parametrize("directory", ["/", "relative/dir"])
+def test_a_directory_must_be_absolute_and_not_the_root(conn, directory):
+    with pytest.raises(ValueError):
+        suppress.create(conn, write(conn, "/srv/data/a.txt"), "directory", directory)
+
+
+def test_only_an_open_flag_can_be_suppressed(conn):
+    flag_id = bypass(conn, "docker ps")
+    suppress.create(conn, flag_id)
+    with pytest.raises(LookupError):
+        suppress.create(conn, flag_id)
+    with pytest.raises(LookupError):
+        suppress.create(conn, 999)
