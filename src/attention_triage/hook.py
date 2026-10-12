@@ -6,7 +6,7 @@ import traceback
 from contextlib import closing
 from datetime import UTC, datetime
 
-from attention_triage import policy, rules, store
+from attention_triage import policy, rules, store, suppress
 from attention_triage.normalize import check_shape, normalize, text
 from attention_triage.redact import redact
 
@@ -46,7 +46,12 @@ def flag(conn, events: list[dict]) -> None:
     try:
         loaded, version = policy.load()
         store.insert_flags(
-            conn, [f for e in events for f in rules.evaluate(e, loaded, version, conn)]
+            conn,
+            [
+                f
+                for e in events
+                for f in suppress.apply(conn, e, rules.evaluate(e, loaded, version, conn))
+            ],
         )
     except Exception:
         log_error()
