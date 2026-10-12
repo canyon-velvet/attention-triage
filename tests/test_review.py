@@ -1,11 +1,13 @@
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from test_digest import T0, bash
 
-from attention_triage import server, store
+from attention_triage import review, server, store
 from attention_triage.digest import digest
+from attention_triage.normalize import normalize
 
 
 @pytest.fixture
@@ -70,6 +72,80 @@ def test_dismissing_future_ones_is_not_built_yet(conn):
     assert statuses(conn)[flag_id] == "open"
 
 
+def test_mark_all_clears_only_the_flags_the_page_showed(conn):
+    bash(conn, "/p/a", "s1", 1)
+    bash(conn, "/p/b", "s2", 2)
+    shown, as_of = open_flags(conn), digest(conn)["as_of"]
+    client().post(f"/api/flags/{shown['s1-1']}/ack")
+    bash(conn, "/p/a", "s1", 3)  # flagged after the page loaded
+
+    body = {"flag_ids": list(shown.values()), "as_of": as_of}
+    response = client().post("/api/review/mark-all", json=body)
+
+    assert response.json() == {"dismissed": 1}  # s2-2; s1-1 was already acknowledged
+    assert list(open_flags(conn)) == ["s1-3"]
+    assert statuses(conn)[shown["s1-1"]] == "acknowledged"
+
+
+def test_mark_all_starts_a_new_review_window(conn):
+    bash(conn, "/p/a", "s1", 10)
+    bash(conn, "/p/a", "s1", 20, bypass=False)
+    assert digest(conn)["headline"] == {
+        "actions": 2,
+        "captured": 2,
+        "need_review": 1,
+        "since": None,
+    }
+
+    review.mark_all(conn, list(open_flags(conn).values()), at=T0 + timedelta(minutes=30))
+    assert digest(conn)["headline"] == {
+        "actions": 0,
+        "captured": 0,
+        "need_review": 0,
+        "since": "2026-10-08T12:30:00.000+00:00",
+    }
+
+    bash(conn, "/p/a", "s1", 40)
+    assert digest(conn)["headline"]["actions"] == 1
+    assert digest(conn)["headline"]["need_review"] == 1
+
+
+def action_now(conn, command: str) -> None:
+    """Store an unflagged Bash call captured at the real current time."""
+    event = normalize(
+        {
+            "hook_event_name": "PreToolUse",
+            "session_id": "s1",
+            "cwd": "/p/a",
+            "tool_name": "Bash",
+            "tool_use_id": command,
+            "tool_input": {"command": command},
+        }
+    )
+    store.insert_event(conn, event)
+
+
+def test_the_next_window_starts_when_the_page_loaded_not_at_the_click(conn):
+    page = client().get("/api/digest").json()
+    action_now(conn, "while-the-page-was-open")
+    body = {"flag_ids": [], "as_of": page["as_of"]}
+    assert client().post("/api/review/mark-all", json=body).status_code == 200
+    headline = digest(conn)["headline"]
+    assert headline["since"] == page["as_of"] and headline["actions"] == 1
+
+
+def test_the_window_start_is_stored_in_utc_and_never_in_the_future(conn):
+    local = datetime(2026, 10, 8, 14, 30, tzinfo=timezone(timedelta(hours=2)))
+    client().post("/api/review/mark-all", json={"flag_ids": [], "as_of": local.isoformat()})
+    assert review.last_review(conn) == "2026-10-08T12:30:00.000+00:00"
+
+    client().post("/api/review/mark-all", json={"flag_ids": [], "as_of": "2999-01-01T00:00:00Z"})
+    assert review.last_review(conn) <= review.now()
+    for as_of in (None, "2026-10-08T12:30:00"):  # missing, or no timezone
+        body = {"flag_ids": [], "as_of": as_of}
+        assert client().post("/api/review/mark-all", json=body).status_code == 422
+
+
 def test_loading_the_inbox_changes_nothing(conn):
     bash(conn, "/p/a", "s1", 1)
     before = list(conn.iterdump())
@@ -87,7 +163,10 @@ def test_another_sites_page_cannot_write(conn, origin):
     assert attacker.post(f"/api/flags/{flag_id}/ack").status_code == 403
     body = {"scope": "once"}
     assert attacker.post(f"/api/flags/{flag_id}/dismiss", json=body).status_code == 403
+    body = {"flag_ids": [flag_id], "as_of": digest(conn)["as_of"]}
+    assert attacker.post("/api/review/mark-all", json=body).status_code == 403
     assert statuses(conn)[flag_id] == "open"
+    assert review.last_review(conn) is None
     assert attacker.get("/api/digest").status_code == 200  # it can't read the response anyway
 
 

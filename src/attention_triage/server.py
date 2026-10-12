@@ -1,6 +1,7 @@
 """`triage ui`: the review inbox and its API (SPEC.md §6) on 127.0.0.1."""
 
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -9,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 
 from attention_triage import hook, review, store
 from attention_triage.digest import digest
@@ -66,6 +67,21 @@ def set_status(flag_id: int, status: str) -> dict:
     if not changed:
         raise HTTPException(409, "Flag is not open")
     return {"id": flag_id, "status": status}
+
+
+class MarkAll(BaseModel):
+    """What the page showed: its flags, and the digest's `as_of`. Flags and actions that arrived
+    after it stay for the next review."""
+
+    flag_ids: list[int]
+    as_of: AwareDatetime
+
+
+@app.post("/api/review/mark-all")
+def mark_all(body: MarkAll) -> dict:
+    at = min(body.as_of, datetime.now(UTC))  # a client can't start the window in the future
+    with closing(store.connect()) as conn:
+        return {"dismissed": review.mark_all(conn, body.flag_ids, at)}
 
 
 @app.get("/api/health")
