@@ -53,6 +53,12 @@ test("a path can be widened to the folder its rule resolved", () => {
   expect(onSuppress).toHaveBeenCalledWith({ kind: "directory", value: "/srv/data" }, "");
 });
 
+test("a command that chains or redirects can't be widened to a prefix, and says why", () => {
+  open({ ...flag, target: "uv run pytest -q 2>&1 | tail -1; git diff --stat" });
+  expect(screen.getAllByRole("radio")[1]).toBeDisabled();
+  expect(screen.getByText(/only an exact match is safe/i)).toBeInTheDocument();
+});
+
 test("an unlisted domain flag offers only an exact match", () => {
   open({ ...flag, rule: "unlisted_domain", label: "partial" });
   expect(choices()).toEqual(["Exactly this"]);

@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { Flag, Pattern } from "./api";
 
-type Choice = { kind: Pattern["kind"]; label: string; value: string };
+type Choice = { kind: Pattern["kind"]; label: string; value: string; unusable?: string };
+
+// suppress.SHELL_SYNTAX: a command holding any of it never matches a prefix, so don't offer one.
+const SHELL_SYNTAX = /[;&|<>`\n]|\$\(/;
 
 // What "edit pattern" offers (SPEC §6). Each widened choice starts at the narrowest value: the
 // whole command, or the file's own folder. The server checks every pattern (suppress.py).
@@ -9,7 +12,15 @@ function choices(flag: Flag): Choice[] {
   const list: Choice[] = [{ kind: "exact", label: "Exactly this", value: "" }];
   // An unlisted_domain flag reviews hosts: a prefix would also cover hosts added later.
   if (flag.target_kind === "command" && flag.rule !== "unlisted_domain" && flag.target) {
-    list.push({ kind: "prefix", label: "Commands starting with", value: flag.target });
+    list.push({
+      kind: "prefix",
+      label: "Commands starting with",
+      value: flag.target,
+      unusable: SHELL_SYNTAX.test(flag.target)
+        ? "Not for this command: it chains or redirects (; & | < > $( or a backtick), and a prefix" +
+          " would also hide whatever is chained after it. Only an exact match is safe."
+        : undefined,
+    });
   }
   const path = flag.evidence.path; // the path as the rule resolved it
   if (flag.target_kind === "path" && typeof path === "string") {
@@ -53,6 +64,7 @@ export function SuppressForm({
                 type="radio"
                 name={`suppress-${flag.id}`}
                 checked={kind === o.kind}
+                disabled={!!o.unusable}
                 onChange={() => setKind(o.kind)}
               />{" "}
               {o.label}
@@ -66,6 +78,7 @@ export function SuppressForm({
                 onChange={(e) => setValues({ ...values, [o.kind]: e.target.value })}
               />
             )}
+            {o.unusable && <p className="caveat">{o.unusable}</p>}
           </div>
         ))}
       </fieldset>
