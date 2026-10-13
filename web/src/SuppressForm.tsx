@@ -6,15 +6,22 @@ type Choice = { kind: Pattern["kind"]; label: string; value: string; unusable?: 
 // suppress.SHELL_SYNTAX: a command holding any of it never matches a prefix, so don't offer one.
 const SHELL_SYNTAX = /[;&|<>`\n]|\$\(/;
 
+// Also how the Suppressions page names each kind.
+export const KIND_LABELS: Record<Pattern["kind"], string> = {
+  exact: "Exactly this",
+  prefix: "Commands starting with",
+  directory: "Anything in the folder",
+};
+
 // What "edit pattern" offers (SPEC §6). Each widened choice starts at the narrowest value: the
 // whole command, or the file's own folder. The server checks every pattern (suppress.py).
 function choices(flag: Flag): Choice[] {
-  const list: Choice[] = [{ kind: "exact", label: "Exactly this", value: "" }];
+  const list: Choice[] = [{ kind: "exact", label: KIND_LABELS.exact, value: "" }];
   // An unlisted_domain flag reviews hosts: a prefix would also cover hosts added later.
   if (flag.target_kind === "command" && flag.rule !== "unlisted_domain" && flag.target) {
     list.push({
       kind: "prefix",
-      label: "Commands starting with",
+      label: KIND_LABELS.prefix,
       value: flag.target,
       unusable: SHELL_SYNTAX.test(flag.target)
         ? "Not for this command: it chains or redirects (; & | < > $( or a backtick), and a prefix" +
@@ -25,7 +32,7 @@ function choices(flag: Flag): Choice[] {
   const path = flag.evidence.path; // the path as the rule resolved it
   if (flag.target_kind === "path" && typeof path === "string") {
     const folder = path.slice(0, path.lastIndexOf("/"));
-    list.push({ kind: "directory", label: "Anything in the folder", value: folder });
+    list.push({ kind: "directory", label: KIND_LABELS.directory, value: folder });
   }
   return list;
 }
