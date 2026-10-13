@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel
 
-from attention_triage import hook, review, store
+from attention_triage import hook, review, store, suppress
 from attention_triage.digest import digest
 
 # Loopback only: the digest shows commands, paths and URLs from every project.
@@ -45,13 +45,38 @@ def get_digest() -> dict:
         return digest(conn)
 
 
+class Pattern(BaseModel):
+    kind: Literal["exact", "prefix", "directory"]
+    value: str
+
+
 class Dismiss(BaseModel):
-    scope: Literal["once"]  # TODO(#15): "future" creates a suppression
+    """scope "future" also suppresses later matches: by default the flag's exact target, or a
+    widened `pattern` (suppress.py checks it)."""
+
+    scope: Literal["once", "future"]
+    pattern: Pattern | None = None
+    note: str | None = None
 
 
 @app.post("/api/flags/{flag_id}/dismiss")
 def dismiss(flag_id: int, body: Dismiss) -> dict:
-    return set_status(flag_id, "dismissed")
+    if body.scope == "once":
+        if body.pattern or body.note:
+            raise HTTPException(422, "Only scope future takes a pattern or note")
+        return set_status(flag_id, "dismissed")
+    kind, value = (body.pattern.kind, body.pattern.value) if body.pattern else ("exact", None)
+    with closing(store.connect()) as conn:
+        try:
+            suppression_id = suppress.create(conn, flag_id, kind, value, body.note)
+        except LookupError:
+            exists = conn.execute("SELECT 1 FROM flags WHERE id = ?", [flag_id]).fetchone()
+            raise HTTPException(
+                409 if exists else 404, "Flag is not open" if exists else "No such flag"
+            ) from None
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None
+    return {"id": flag_id, "status": "dismissed", "suppression_id": suppression_id}
 
 
 @app.post("/api/flags/{flag_id}/ack")

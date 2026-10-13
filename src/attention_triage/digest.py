@@ -21,6 +21,11 @@ def digest(conn: sqlite3.Connection) -> dict:
     [actions] = conn.execute(
         "SELECT count(*) FROM events WHERE event_type = 'tool_call' AND ts > ?", [since or ""]
     ).fetchone()
+    [suppressed] = conn.execute(  # same window: flags hidden by a "this and future ones"
+        "SELECT count(*) FROM flags f JOIN events e ON e.dedup_key = f.event_key"
+        " WHERE f.status = 'suppressed' AND e.ts > ?",
+        [since or ""],
+    ).fetchone()
     cursor = conn.execute(
         """
         SELECT f.id, e.tool_name AS tool, e.target_kind, e.target, e.stated_reason,
@@ -46,6 +51,7 @@ def digest(conn: sqlite3.Connection) -> dict:
             "actions": actions,
             "captured": actions,
             "need_review": sum(len(f) for s in projects.values() for f in s.values()),
+            "suppressed": suppressed,
             "since": since,
         },
         "projects": [

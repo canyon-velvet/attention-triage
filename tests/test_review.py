@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 from test_digest import T0, bash
+from test_suppress import bypass, status
 
 from attention_triage import review, server, store
 from attention_triage.digest import digest
@@ -64,12 +65,47 @@ def test_only_an_open_flag_changes(conn):
     assert client().post("/api/flags/999/ack").status_code == 404
 
 
-def test_dismissing_future_ones_is_not_built_yet(conn):
-    bash(conn, "/p/a", "s1", 1)
-    flag_id = open_flags(conn)["s1-1"]
-    for body in ({"scope": "future"}, None):
+def test_fine_for_future_ones_suppresses_later_matches_and_counts_them(conn):
+    first = bypass(conn, "docker ps")
+    response = client().post(f"/api/flags/{first}/dismiss", json={"scope": "future"})
+    assert response.status_code == 200
+    suppression_id = response.json()["suppression_id"]
+    assert response.json() == {"id": first, "status": "dismissed", "suppression_id": suppression_id}
+
+    later = bypass(conn, "docker ps")
+    assert status(conn, later) == ("suppressed", suppression_id)
+    headline = digest(conn)["headline"]
+    assert (headline["need_review"], headline["suppressed"]) == (0, 1)
+
+
+def test_fine_for_future_ones_takes_a_widened_pattern_and_a_note(conn):
+    first = bypass(conn, "docker ps")
+    body = {"scope": "future", "pattern": {"kind": "prefix", "value": "docker"}, "note": "local"}
+    assert client().post(f"/api/flags/{first}/dismiss", json=body).status_code == 200
+    assert conn.execute("SELECT kind, pattern, note FROM suppressions").fetchall() == [
+        ("prefix", "docker", "local")
+    ]
+    assert status(conn, bypass(conn, "docker compose up"))[0] == "suppressed"
+
+
+def test_a_pattern_that_cant_be_used_is_refused_with_the_reason(conn):
+    flag_id = bypass(conn, "bash -c 'make'")
+    body = {"scope": "future", "pattern": {"kind": "prefix", "value": "bash"}}
+    response = client().post(f"/api/flags/{flag_id}/dismiss", json=body)
+    assert response.status_code == 422
+    assert "can only match exactly" in response.json()["detail"]
+    assert status(conn, flag_id) == ("open", None)
+
+
+def test_dismiss_bodies_that_dont_fit_are_refused(conn):
+    flag_id = bypass(conn, "docker ps")
+    pattern = {"kind": "exact", "value": "docker ps"}
+    for body in (None, {"scope": "once", "pattern": pattern}, {"scope": "once", "note": "x"}):
         assert client().post(f"/api/flags/{flag_id}/dismiss", json=body).status_code == 422
-    assert statuses(conn)[flag_id] == "open"
+    future = {"scope": "future"}
+    assert client().post("/api/flags/999/dismiss", json=future).status_code == 404
+    client().post(f"/api/flags/{flag_id}/ack")
+    assert client().post(f"/api/flags/{flag_id}/dismiss", json=future).status_code == 409
 
 
 def test_mark_all_clears_only_the_flags_the_page_showed(conn):
@@ -94,6 +130,7 @@ def test_mark_all_starts_a_new_review_window(conn):
         "actions": 2,
         "captured": 2,
         "need_review": 1,
+        "suppressed": 0,
         "since": None,
     }
 
@@ -102,6 +139,7 @@ def test_mark_all_starts_a_new_review_window(conn):
         "actions": 0,
         "captured": 0,
         "need_review": 0,
+        "suppressed": 0,
         "since": "2026-10-08T12:30:00.000+00:00",
     }
 
