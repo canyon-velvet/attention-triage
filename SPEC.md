@@ -186,6 +186,8 @@ rules:
 
 ### Session detail
 Full action list for one session (all events, flagged ones highlighted), coverage figure, subagents.
+- One row per tool call (#17): its result, failure, denial and permission prompt fold into its outcome (§5). A result whose call wasn't stored is a row of its own. Session, turn and subagent start/end events are rows too; the internal `SubagentStop` (§10) isn't.
+- Each subagent's events are a section of their own, after the main agent's. Flagged rows show every flag on them with its status (open, dismissed, acknowledged or suppressed).
 
 ### Suppressions page
 Every "future" dismissal: rule, pattern, project, note, created, hit count, last hit, **undo**. Recurring suppressions show a config suggestion, e.g. "matched 14× this week — consider adding `docker *` to sandbox `excludedCommands`."
