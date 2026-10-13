@@ -46,11 +46,17 @@ export function Inbox() {
   if (error) return <p className="error">Couldn't load the digest: {error}</p>;
   if (!digest) return <p>Loading…</p>;
   const { actions, captured, need_review, suppressed, since } = digest.headline;
-  // TODO(#16): link "N suppressed" to the Suppressions page.
-  const hidden = suppressed > 0 ? ` · ${suppressed} suppressed` : "";
   return (
     <main>
-      <h1>{`${actions} actions · ${captured} captured · ${need_review} need review${hidden}`}</h1>
+      <h1>
+        {`${actions} actions · ${captured} captured · ${need_review} need review`}
+        {suppressed > 0 && (
+          <>
+            {" · "}
+            <a href="#/suppressions">{`${suppressed} suppressed`}</a>
+          </>
+        )}
+      </h1>
       {since && (
         <p className="since">
           Since your last review, <time dateTime={since}>{new Date(since).toLocaleString()}</time>

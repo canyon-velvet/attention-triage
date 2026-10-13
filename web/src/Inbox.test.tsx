@@ -137,12 +137,14 @@ test("a refused pattern shows the server's reason", async () => {
   expect(await screen.findAllByText(reason)).toHaveLength(2);
 });
 
-test("the headline counts what was suppressed", async () => {
+test("the headline counts what was suppressed, linking to the Suppressions page", async () => {
   const hidden = digest();
   hidden.headline.suppressed = 3;
   serve([hidden]);
   render(<Inbox />);
-  expect(await screen.findByText("214 actions · 214 captured · 1 need review · 3 suppressed")).toBeInTheDocument();
+  const headline = await screen.findByRole("heading", { level: 1 });
+  expect(headline).toHaveTextContent("214 actions · 214 captured · 1 need review · 3 suppressed");
+  expect(screen.getByRole("link", { name: "3 suppressed" })).toHaveAttribute("href", "#/suppressions");
 });
 
 test("if the reload after an action fails, the last inbox stays with the problem shown", async () => {
