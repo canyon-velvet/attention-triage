@@ -113,6 +113,9 @@ def test_each_flag_says_what_ran_why_and_which_rule(conn):
     bash(conn, "/p/a", "s1", 1)
     [flag] = digest(conn)["projects"][0]["sessions"][0]["flags"]
     assert isinstance(flag.pop("id"), int)
+    guidance = flag.pop("guidance")  # test_guidance.py covers it
+    assert (guidance["files"], guidance["commits"]) == ([], [])
+    assert guidance["policy"]["key"] == "rules.sandbox_bypass.enabled"
     assert flag == {
         "tool": "Bash",
         "target_kind": "command",

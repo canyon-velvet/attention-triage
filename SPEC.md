@@ -183,6 +183,7 @@ rules:
 - **Mark all reviewed** clears the rest. Opening the page clears nothing.
 - "N suppressed" count with a link to the Suppressions page.
 - Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`), and where in `policy.yaml` to tighten the rule. The UI never runs git or edits the policy.
+  - Built from captured events at read time (#18), never by running git. Files: the flagged call's own (a file tool's path; for Bash, Claude Code's `changedFiles`). Commits: those the call or a later one in its session reports (`git commit` prints `[branch sha] subject`); best-effort. Commands use `git -C <project>` with shell-quoted paths, only for files inside a project that is (still) a git checkout; other files are listed without commands. A path that redaction cut is left out.
 
 No session detail page (#17 dropped): a full action list rebuilds the transcript this tool spares you. The inbox is the review surface; each session heading there shows its coverage (§7).
 
