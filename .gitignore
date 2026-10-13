@@ -1,11 +1,7 @@
-# Claude Code / personal workflow files (kept local, not part of the tool)
-.claude/
-CLAUDE.md
+# Claude Code: track shared agents only; settings, worktrees and session state stay local
+**/.claude/*
+!/.claude/agents/
 CLAUDE.local.md
-docs/agents/
-docs/adr/
-SPEC.md
-GLOSSARY.md
 
 # Payload recorder output (scripts/record-payloads)
 scripts/record-payloads/payloads/
