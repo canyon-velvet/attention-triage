@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { Suppression } from "./api";
 import { Suppressions } from "./Suppressions";
+import "./testing"; // unmounts each render after its test
 
 const docker: Suppression = {
   id: 7,
@@ -36,8 +37,9 @@ test("each suppression shows its pattern, hits and config suggestion", async () 
   serve([[docker]]);
   render(<Suppressions />);
   expect(await screen.findByText("docker")).toBeInTheDocument();
-  expect(screen.getByText(/\(prefix\) · sandbox_bypass · \/p\/main/)).toBeInTheDocument();
-  expect(screen.getByText("local containers")).toBeInTheDocument();
+  expect(screen.getByText(/^Commands starting with:/)).toBeInTheDocument();
+  expect(screen.getByText("Rule: sandbox_bypass · Project: /p/main")).toBeInTheDocument();
+  expect(screen.getByText("Note: local containers")).toBeInTheDocument();
   expect(screen.getByText(/14 hits/)).toBeInTheDocument();
   expect(screen.getByText(docker.suggestion!)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "← Inbox" })).toHaveAttribute("href", "#/");
@@ -57,4 +59,12 @@ test("a failed undo says so and still reloads", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
   expect(await screen.findByText("Couldn't undo: HTTP 500")).toBeInTheDocument();
   await waitFor(() => expect(requests).toHaveLength(3));
+});
+
+test("an exact suppression says so, and one hit is singular", async () => {
+  serve([[{ ...docker, kind: "exact", pattern: "docker ps", hits: 1, note: null, suggestion: null }]]);
+  render(<Suppressions />);
+  expect(await screen.findByText(/^Exactly this:/)).toBeInTheDocument();
+  expect(screen.getByText(/· 1 hit ·/)).toBeInTheDocument();
+  expect(screen.queryByText(/^Note:/)).toBeNull();
 });
