@@ -41,6 +41,7 @@ FLAG_COLUMNS = [
     "evidence",
     "policy_version",
     "status",
+    "suppression_id",
     "created_at",
     "updated_at",
 ]
@@ -93,6 +94,18 @@ CREATE TABLE IF NOT EXISTS flags (
     updated_at TEXT NOT NULL,
     UNIQUE (event_key, rule_id)
 );
+-- "Fine → this and future ones" (suppress.py). project = repo_root, else project_root. Hits are
+-- the flags stored as suppressed with its id, counted when read.
+CREATE TABLE IF NOT EXISTS suppressions (
+    id INTEGER PRIMARY KEY,
+    rule_id TEXT NOT NULL,
+    project TEXT,
+    kind TEXT NOT NULL,
+    pattern TEXT NOT NULL,
+    note TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS suppressions_rule ON suppressions (rule_id, project);
 -- One row per "mark all reviewed"; the digest headline counts actions since the latest.
 CREATE TABLE IF NOT EXISTS reviews (
     id INTEGER PRIMARY KEY,
@@ -148,12 +161,13 @@ def earlier_events(conn: sqlite3.Connection, event: dict, event_type: str) -> li
 
 
 def insert_flags(conn: sqlite3.Connection, flags: list[dict]) -> None:
-    """Store flags; one per event and rule, so a repeat is ignored."""
+    """Store flags; one per event and rule, so a repeat is ignored. Only a suppressed flag has a
+    suppression_id."""
     conn.executemany(
         f"INSERT OR IGNORE INTO flags ({', '.join(FLAG_COLUMNS)}) VALUES ({', '.join('?' * len(FLAG_COLUMNS))})",
         [
             [
-                json.dumps(f[c], ensure_ascii=False) if c == "evidence" else f[c]
+                json.dumps(f[c], ensure_ascii=False) if c == "evidence" else f.get(c)
                 for c in FLAG_COLUMNS
             ]
             for f in flags
