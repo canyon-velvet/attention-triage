@@ -109,6 +109,20 @@ def mark_all(body: MarkAll) -> dict:
         return {"dismissed": review.mark_all(conn, body.flag_ids, at)}
 
 
+@app.get("/api/suppressions")
+def get_suppressions() -> list[dict]:
+    with closing(store.connect()) as conn:
+        return suppress.listing(conn)
+
+
+@app.delete("/api/suppressions/{suppression_id}")
+def undo_suppression(suppression_id: int) -> dict:
+    with closing(store.connect()) as conn:
+        if not suppress.delete(conn, suppression_id):
+            raise HTTPException(404, "No such suppression")
+    return {"id": suppression_id, "deleted": True}
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"ok": True}

@@ -1,4 +1,5 @@
 from contextlib import closing
+from datetime import UTC, datetime, timedelta
 from itertools import count
 
 import pytest
@@ -299,3 +300,64 @@ def test_an_acknowledgement_saved_meanwhile_wins_and_nothing_is_suppressed(conn,
         suppress.create(conn, flag_id)
     assert status(conn, flag_id) == ("acknowledged", None)
     assert conn.execute("SELECT count(*) FROM suppressions").fetchone() == (0,)
+
+
+def test_undo_flags_later_matches_again_and_reopens_the_flags_it_hid(conn):
+    first = bypass(conn, "docker ps")
+    suppression_id = suppress.create(conn, first)
+    hidden = bypass(conn, "docker ps")
+    assert suppress.delete(conn, suppression_id)
+    assert status(conn, hidden) == ("open", None)
+    assert status(conn, first) == ("dismissed", None)  # dismissed by the user, not by the pattern
+    assert status(conn, bypass(conn, "docker ps")) == ("open", None)
+    assert not suppress.delete(conn, suppression_id)
+
+
+def test_hits_and_last_hit_count_the_flags_a_suppression_hid(conn):
+    suppression_id = suppress.create(conn, bypass(conn, "docker ps"))
+    [before] = suppress.listing(conn)
+    assert (before["hits"], before["last_hit"]) == (0, None)
+    for _ in range(2):
+        last = bypass(conn, "docker ps")
+    bypass(conn, "docker ps -a")  # not a match
+    [after] = suppress.listing(conn)
+    [ts] = conn.execute(
+        "SELECT e.ts FROM flags f JOIN events e ON e.dedup_key = f.event_key WHERE f.id = ?", [last]
+    ).fetchone()
+    assert after | {"created_at": None} == {
+        "id": suppression_id,
+        "rule": "sandbox_bypass",
+        "kind": "exact",
+        "pattern": "docker ps",
+        "project": "/p/a",
+        "note": None,
+        "created_at": None,
+        "hits": 2,
+        "last_hit": ts,
+        "suggestion": None,
+    }
+
+
+def test_a_prefix_that_hid_many_bypasses_this_week_suggests_excluding_the_command(conn):
+    suppress.create(conn, bypass(conn, "docker ps"), "prefix", "docker")
+    for n in range(suppress.RECURRING):
+        bypass(conn, f"docker run image{n}")
+    [found] = suppress.listing(conn)
+    assert found["suggestion"] == (
+        "matched 5× this week — consider adding `docker *` to sandbox `excludedCommands`."
+    )
+    a_week_later = datetime.now(UTC) + timedelta(days=8)
+    assert suppress.listing(conn, at=a_week_later)[0]["suggestion"] is None
+
+
+def test_a_recurring_unlisted_domain_suggests_allowing_its_host(conn):
+    command = {"command": "curl https://api.unlisted.dev/v1"}
+    suppress.create(conn, capture(conn, "Bash", command))
+    for _ in range(suppress.RECURRING - 1):
+        capture(conn, "Bash", command)
+    assert suppress.listing(conn)[0]["suggestion"] is None  # one short
+    capture(conn, "Bash", command)
+    assert suppress.listing(conn)[0]["suggestion"] == (
+        "matched 5× this week — consider adding `api.unlisted.dev`"
+        " to `unlisted_domain.allowed_domains` in policy.yaml."
+    )

@@ -97,6 +97,36 @@ def test_a_pattern_that_cant_be_used_is_refused_with_the_reason(conn):
     assert status(conn, flag_id) == ("open", None)
 
 
+def test_the_suppressions_page_lists_them_and_undo_flags_matches_again(conn):
+    first = bypass(conn, "docker ps")
+    client().post(f"/api/flags/{first}/dismiss", json={"scope": "future", "note": "local"})
+    hidden = bypass(conn, "docker ps")
+    [listed] = client().get("/api/suppressions").json()
+    assert (listed["pattern"], listed["note"], listed["hits"]) == ("docker ps", "local", 1)
+
+    assert client().delete(f"/api/suppressions/{listed['id']}").json() == {
+        "id": listed["id"],
+        "deleted": True,
+    }
+    assert client().get("/api/suppressions").json() == []
+    assert status(conn, hidden) == ("open", None)
+    assert status(conn, bypass(conn, "docker ps")) == ("open", None)
+    assert client().delete(f"/api/suppressions/{listed['id']}").status_code == 404
+
+
+def test_another_sites_page_cannot_undo_a_suppression(conn):
+    suppression_id = (
+        client()
+        .post(f"/api/flags/{bypass(conn, 'docker ps')}/dismiss", json={"scope": "future"})
+        .json()["suppression_id"]
+    )
+    assert (
+        client("https://evil.example").delete(f"/api/suppressions/{suppression_id}").status_code
+        == 403
+    )
+    assert len(client().get("/api/suppressions").json()) == 1
+
+
 def test_dismiss_bodies_that_dont_fit_are_refused(conn):
     flag_id = bypass(conn, "docker ps")
     pattern = {"kind": "exact", "value": "docker ps"}
