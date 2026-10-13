@@ -167,3 +167,8 @@ button:disabled {
 .error {
   color: var(--high);
 }
+
+.suggestion {
+  border-left: 3px solid var(--muted);
+  padding-left: 0.5rem;
+}

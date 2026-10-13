@@ -47,9 +47,9 @@ export async function fetchDigest(): Promise<Digest> {
 }
 
 // Review actions (src/attention_triage/server.py). Same origin, so the server's CSRF check passes.
-async function post(path: string, body: unknown = {}): Promise<void> {
+async function post(path: string, body: unknown = {}, method = "POST"): Promise<void> {
   const response = await fetch(path, {
-    method: "POST",
+    method,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -76,3 +76,26 @@ export const markAllReviewed = (digest: Digest) =>
     flag_ids: digest.projects.flatMap((p) => p.sessions.flatMap((s) => s.flags.map((f) => f.id))),
     as_of: digest.as_of,
   });
+
+// The shape of GET /api/suppressions (suppress.listing in src/attention_triage/suppress.py).
+export type Suppression = {
+  id: number;
+  rule: string;
+  kind: Pattern["kind"];
+  pattern: string;
+  project: string | null;
+  note: string | null;
+  created_at: string;
+  hits: number; // flags it hid
+  last_hit: string | null;
+  suggestion: string | null; // a config change, once it hides many flags a week
+};
+
+export async function fetchSuppressions(): Promise<Suppression[]> {
+  const response = await fetch("/api/suppressions");
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
+
+// Undo: later matches are flagged again, and the flags it hid reopen.
+export const undoSuppression = (id: number) => post(`/api/suppressions/${id}`, {}, "DELETE");
