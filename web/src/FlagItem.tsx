@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Flag, OutcomeKind, Pattern } from "./api";
+import { Guidance } from "./Guidance";
 import { SuppressForm } from "./SuppressForm";
 
 const OUTCOMES: Record<OutcomeKind, string> = {
@@ -58,6 +59,7 @@ export function FlagItem({
         <time dateTime={flag.time}>{new Date(flag.time).toLocaleString()}</time>
         <span className="project">{flag.project}</span>
       </div>
+      <Guidance guidance={flag.guidance} />
       <div className="actions">
         <button type="button" disabled={busy} onClick={onDismiss}>
           Fine — this one only

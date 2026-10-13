@@ -23,6 +23,14 @@ export type Flag = {
   time: string;
   project: string | null;
   outcome: { kind: OutcomeKind; error: string | null };
+  guidance: Guidance;
+};
+
+// src/attention_triage/guidance.py. Commands are built and shell-quoted by the server, for copying.
+export type Guidance = {
+  files: { path: string; commands: string[] }[]; // no commands: outside the project's git checkout
+  commits: { sha: string; subject: string; command: string }[];
+  policy: { file: string; key: string; hint: string };
 };
 
 export type Digest = {

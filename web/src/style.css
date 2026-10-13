@@ -172,3 +172,34 @@ button:disabled {
   border-left: 3px solid var(--muted);
   padding-left: 0.5rem;
 }
+
+.guidance {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.guidance summary {
+  cursor: pointer;
+}
+
+.guidance h4 {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.85rem;
+}
+
+.guidance ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.command {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0.2rem 0;
+}
+
+.command code {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
