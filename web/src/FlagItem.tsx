@@ -1,4 +1,6 @@
-import type { Flag, OutcomeKind } from "./api";
+import { useState } from "react";
+import type { Flag, OutcomeKind, Pattern } from "./api";
+import { SuppressForm } from "./SuppressForm";
 
 const OUTCOMES: Record<OutcomeKind, string> = {
   ran: "Ran without a prompt",
@@ -16,13 +18,16 @@ export function FlagItem({
   flag,
   busy,
   onDismiss,
+  onSuppress,
   onAcknowledge,
 }: {
   flag: Flag;
   busy: boolean; // a review action is being saved
   onDismiss: () => void;
+  onSuppress: (pattern: Pattern | null, note: string) => Promise<string | undefined>; // the problem
   onAcknowledge: () => void;
 }) {
+  const [suppressing, setSuppressing] = useState(false);
   return (
     <li className={`flag ${flag.severity}`}>
       <div className="what-ran">
@@ -57,10 +62,21 @@ export function FlagItem({
         <button type="button" disabled={busy} onClick={onDismiss}>
           Fine — this one only
         </button>
+        <button type="button" disabled={busy} onClick={() => setSuppressing(!suppressing)}>
+          Fine — this and future ones
+        </button>
         <button type="button" disabled={busy} onClick={onAcknowledge}>
           Acknowledge
         </button>
       </div>
+      {suppressing && (
+        <SuppressForm
+          flag={flag}
+          busy={busy}
+          onConfirm={onSuppress}
+          onCancel={() => setSuppressing(false)}
+        />
+      )}
     </li>
   );
 }

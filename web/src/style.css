@@ -119,6 +119,46 @@ button:disabled {
   margin-top: 0.6rem;
 }
 
+.suppress {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.suppress fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.suppress legend {
+  padding: 0;
+  margin-bottom: 0.3rem;
+}
+
+.suppress .choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.25rem 0;
+}
+
+.suppress input[type="text"] {
+  font: inherit;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.suppress .note {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+
 .since {
   color: var(--muted);
   margin-top: -0.5rem;
