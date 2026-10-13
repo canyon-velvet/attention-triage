@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { SessionDetail, SessionEvent } from "./api";
-import { Session } from "./Session";
+import { Session, sessionId } from "./Session";
 import "./testing"; // unmounts each render after its test
 
 const row = (event: Partial<SessionEvent>): SessionEvent => ({
@@ -76,4 +76,32 @@ test("a session that can't be loaded says so", async () => {
   serve(null);
   render(<Session id="gone" />);
   expect(await screen.findByText("Couldn't load the session: HTTP 404")).toBeInTheDocument();
+});
+
+test("a mangled id in the link is kept as typed instead of crashing the page", () => {
+  expect(sessionId("73eb2355-abcd")).toBe("73eb2355-abcd");
+  expect(sessionId("a%2Fb")).toBe("a/b");
+  expect(sessionId("%E0%A4")).toBe("%E0%A4");
+});
+
+test("moving to another session drops the first one's late answer", async () => {
+  let answerFirst: (body: unknown) => void = () => {};
+  const other = { ...session, session_id: "b", events: [row({ event_type: "session_end" })], subagents: [] };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) =>
+      url.endsWith("/a")
+        ? new Promise((resolve) => {
+            answerFirst = (body) => resolve({ ok: true, json: async () => body });
+          })
+        : Promise.resolve({ ok: true, json: async () => other }),
+    ),
+  );
+  const { rerender } = render(<Session id="a" />);
+  rerender(<Session id="b" />);
+  expect(await screen.findByText("Session ended")).toBeInTheDocument();
+  answerFirst(session);
+  await new Promise((resolve) => setTimeout(resolve, 20)); // let the late answer land
+  expect(screen.queryByText("Session started")).toBeNull();
+  expect(screen.getByText("Session ended")).toBeInTheDocument();
 });

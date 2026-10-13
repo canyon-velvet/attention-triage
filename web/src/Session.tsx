@@ -16,13 +16,32 @@ const EVENTS: Record<string, string> = {
 
 export const sessionLink = (id: string) => `#/sessions/${encodeURIComponent(id)}`;
 
+// The id in a #/sessions/ link; a mangled one (`%` alone) stays as typed and loads as a 404.
+export function sessionId(encoded: string): string {
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return encoded;
+  }
+}
+
 // Every captured event of one session, flagged ones highlighted. Captured text renders as text only.
 export function Session({ id }: { id: string }) {
   const [session, setSession] = useState<SessionDetail>();
   const [error, setError] = useState<string>();
 
+  // A new id (the # edited by hand) starts afresh, and the old id's late answer is dropped.
   useEffect(() => {
-    fetchSession(id).then(setSession, (e: Error) => setError(e.message));
+    let current = true;
+    setSession(undefined);
+    setError(undefined);
+    fetchSession(id).then(
+      (found) => current && setSession(found),
+      (e: Error) => current && setError(e.message),
+    );
+    return () => {
+      current = false;
+    };
   }, [id]);
 
   return (
