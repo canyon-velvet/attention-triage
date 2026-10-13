@@ -189,6 +189,9 @@ Full action list for one session (all events, flagged ones highlighted), coverag
 
 ### Suppressions page
 Every "future" dismissal: rule, pattern, project, note, created, hit count, last hit, **undo**. Recurring suppressions show a config suggestion, e.g. "matched 14× this week — consider adding `docker *` to sandbox `excludedCommands`."
+- Hits are the flags a suppression stored as suppressed. Undo (#16) reopens them; the flag dismissed when it was made stays dismissed.
+- Recurring = 5+ hits in the last 7 days. `sandbox_bypass` suggests sandbox `excludedCommands`; `unlisted_domain` suggests adding its hosts to `allowed_domains`. Other rules get none.
+- **Known limit** (fix deferred): a hook that read the suppression just before an undo can still store its flag as suppressed by it, so that flag stays out of the inbox.
 
 ### API (FastAPI, bound to 127.0.0.1)
 `GET /api/digest`, `GET /api/sessions/{id}`, `POST /api/flags/{id}/dismiss {scope: once|future, pattern?}`, `POST /api/flags/{id}/ack`, `POST /api/review/mark-all`, `GET /api/suppressions`, `DELETE /api/suppressions/{id}`, `GET /api/health`.

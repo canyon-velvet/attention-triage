@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sqlite3
+from datetime import UTC, datetime, timedelta
 
 from attention_triage.redact import MASK
 from attention_triage.review import now
@@ -45,6 +46,8 @@ LAUNCHERS = {
 # What redaction leaves in place of a secret or a cut middle (redact.py). Two different commands
 # can look the same after it, and the cut can hide shell syntax, so such a subject never matches.
 HIDDEN = re.compile(rf"{re.escape(MASK)}|…\[\d+ chars cut\]…")
+# A suppression that hid this many flags in the last week suggests changing the config instead.
+RECURRING = 5
 
 
 def subject(target_kind: str | None, target: str | None, evidence: dict) -> str | None:
@@ -187,3 +190,73 @@ def apply(conn: sqlite3.Connection, event: dict, flags: list[dict]) -> list[dict
                 flag.update(status="suppressed", suppression_id=suppression_id)
                 break
     return flags
+
+
+def listing(conn: sqlite3.Connection, at: datetime | None = None) -> list[dict]:
+    """Every suppression, newest first, with its hits: the flags stored as suppressed by it. One
+    with RECURRING hits in the week before `at` carries a config suggestion."""
+    week_ago = now((at or datetime.now(UTC)) - timedelta(days=7))
+    rows = conn.execute(
+        "SELECT s.id, s.rule_id, s.kind, s.pattern, s.project, s.note, s.created_at,"
+        " count(f.id), max(e.ts), count(CASE WHEN e.ts > ? THEN 1 END)"
+        " FROM suppressions s"
+        " LEFT JOIN flags f ON f.suppression_id = s.id AND f.status = 'suppressed'"
+        " LEFT JOIN events e ON e.dedup_key = f.event_key"
+        " GROUP BY s.id ORDER BY s.id DESC",
+        [week_ago],
+    ).fetchall()
+    return [
+        {
+            "id": i,
+            "rule": rule_id,
+            "kind": kind,
+            "pattern": pattern,
+            "project": project,
+            "note": note,
+            "created_at": created_at,
+            "hits": hits,
+            "last_hit": last_hit,
+            "suggestion": suggestion(conn, i, rule_id, kind, pattern, week)
+            if week >= RECURRING
+            else None,
+        }
+        for i, rule_id, kind, pattern, project, note, created_at, hits, last_hit, week in rows
+    ]
+
+
+def suggestion(
+    conn: sqlite3.Connection, suppression_id: int, rule_id: str, kind: str, pattern: str, week: int
+) -> str | None:
+    """The config change that would stop a recurring suppression's flags at the source."""
+    if rule_id == "sandbox_bypass":
+        command = f"{pattern} *" if kind == "prefix" else pattern
+        return f"matched {week}× this week — consider adding `{command}` to sandbox `excludedCommands`."
+    if rule_id == "unlisted_domain":  # exact only, so every hit names the same hosts
+        [evidence] = conn.execute(
+            "SELECT evidence FROM flags WHERE suppression_id = ? LIMIT 1", [suppression_id]
+        ).fetchone()
+        hosts = [h for h in json.loads(evidence).get("hosts", []) if h]
+        if hosts:
+            return (
+                f"matched {week}× this week — consider adding "
+                + ", ".join(f"`{h}`" for h in hosts)
+                + " to `unlisted_domain.allowed_domains` in policy.yaml."
+            )
+    return None
+
+
+def delete(conn: sqlite3.Connection, suppression_id: int) -> bool:
+    """Undo a suppression: later matches are flagged again, and the flags it hid reopen for review.
+    The flag dismissed when it was made stays dismissed. False if there is no such suppression."""
+    if not conn.execute("DELETE FROM suppressions WHERE id = ?", [suppression_id]).rowcount:
+        return False
+    conn.execute(
+        "UPDATE flags SET status = 'open', updated_at = ?"
+        " WHERE suppression_id = ? AND status = 'suppressed'",
+        [now(), suppression_id],
+    )
+    conn.execute(
+        "UPDATE flags SET suppression_id = NULL WHERE suppression_id = ?", [suppression_id]
+    )
+    conn.commit()
+    return True
