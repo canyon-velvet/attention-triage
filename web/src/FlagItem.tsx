@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Flag, OutcomeKind, Pattern } from "./api";
 import { SuppressForm } from "./SuppressForm";
 
-const OUTCOMES: Record<OutcomeKind, string> = {
+export const OUTCOMES: Record<OutcomeKind, string> = {
   ran: "Ran without a prompt",
   approved: "Approved at a prompt",
   failed: "Failed",
