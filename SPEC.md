@@ -184,10 +184,7 @@ rules:
 - "N suppressed" count with a link to the Suppressions page.
 - Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`), and where in `policy.yaml` to tighten the rule. The UI never runs git or edits the policy.
 
-### Session detail
-Full action list for one session (all events, flagged ones highlighted), coverage figure, subagents.
-- One row per tool call (#17): its result, failure, denial and permission prompt fold into its outcome (§5). A result whose call wasn't stored is a row of its own. Session, turn and subagent start/end events are rows too; the internal `SubagentStop` (§10) isn't.
-- Each subagent's events are a section of their own, after the main agent's. Flagged rows show every flag on them with its status (open, dismissed, acknowledged or suppressed).
+No session detail page (#17 dropped): a full action list rebuilds the transcript this tool spares you. The inbox is the review surface; each session heading there shows its coverage (§7).
 
 ### Suppressions page
 Every "future" dismissal: rule, pattern, project, note, created, hit count, last hit, **undo**. Recurring suppressions show a config suggestion, e.g. "matched 14× this week — consider adding `docker *` to sandbox `excludedCommands`."
@@ -196,13 +193,13 @@ Every "future" dismissal: rule, pattern, project, note, created, hit count, last
 - **Known limit** (fix deferred): a hook that read the suppression just before an undo can still store its flag as suppressed by it, so that flag stays out of the inbox.
 
 ### API (FastAPI, bound to 127.0.0.1)
-`GET /api/digest`, `GET /api/sessions/{id}`, `POST /api/flags/{id}/dismiss {scope: once|future, pattern?}`, `POST /api/flags/{id}/ack`, `POST /api/review/mark-all`, `GET /api/suppressions`, `DELETE /api/suppressions/{id}`, `GET /api/health`.
+`GET /api/digest`, `POST /api/flags/{id}/dismiss {scope: once|future, pattern?}`, `POST /api/flags/{id}/ack`, `POST /api/review/mark-all`, `GET /api/suppressions`, `DELETE /api/suppressions/{id}`, `GET /api/health`.
 
 ## 7. Capture health
 
 All four in v1:
 1. **Spool fallback** — DB write failure → `spool.jsonl`; ingested on the next successful run. Failures become delays, not loss.
-2. **Transcript coverage** — for each session, count tool calls in Claude Code's transcript JSONL and compare with captured `PreToolUse` events, matched by tool_use id (the spike confirmed hook and transcript ids are identical). Shown in the headline and per session. The transcript format is undocumented: on parse failure show "coverage unknown", never guess.
+2. **Transcript coverage** — for each session, count tool calls in Claude Code's transcript JSONL and compare with captured `PreToolUse` events, matched by tool_use id (the spike confirmed hook and transcript ids are identical). Shown in the headline and on each session heading in the inbox. The transcript format is undocumented: on parse failure show "coverage unknown", never guess.
 3. **In-session notice** — on the first hook failure in a session, emit one `systemMessage` ("attention-triage: capture failing (<reason>); events buffered. Run `triage doctor`."), rate-limited to once per session. Async hooks' output is ignored by Claude Code, so the notice comes from a separate synchronous `SessionStart` hook that checks for recent failures.
    - **Known limits** (fixes deferred; to be thought through later):
      - *Late:* a failure is reported at the next `SessionStart` (start, resume, `/clear`, compact), not when it happens.
@@ -234,7 +231,7 @@ All four in v1:
 - **M0 — Spike (first ticket).** A throwaway hook that dumps every payload to files, installed by the user. Run a session that triggers: a sandbox block, a `dangerouslyDisableSandbox` retry, a preemptive bypass, an approved prompt, a denied prompt, a Write outside the project, a WebFetch, a subagent. Output: `tests/fixtures/payloads/` + answers to the questions below, recorded in this spec.
 - **M1 — Capture:** hook, normalize, redact, store, dedup, spool; `install` / `uninstall` / `doctor`.
 - **M2 — Rules:** policy loading/versioning, R1–R4, outcome derivation, `reeval`. Fixture tests first.
-- **M3 — Digest:** API + inbox, dismiss/ack/mark-all, suppressions page, session detail.
+- **M3 — Digest:** API + inbox, dismiss/ack/mark-all, suppressions page.
 - **M4 — Health & retention:** transcript coverage, in-session notice, purge.
 - Then: dogfood on real sessions for a week before any v2 work.
 

@@ -172,33 +172,3 @@ button:disabled {
   border-left: 3px solid var(--muted);
   padding-left: 0.5rem;
 }
-
-ol.events {
-  list-style: none;
-  padding: 0;
-}
-
-.event {
-  padding: 0.3rem 0.6rem;
-  border-left: 4px solid transparent;
-}
-
-.event time {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-.event.flagged {
-  border-left-color: var(--review);
-  background: rgba(127, 127, 127, 0.08);
-}
-
-.event.flagged.high {
-  border-left-color: var(--high);
-}
-
-.event .reason {
-  margin: 0.1rem 0 0;
-  color: var(--muted);
-  font-size: 0.85rem;
-}

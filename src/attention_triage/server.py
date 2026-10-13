@@ -12,7 +12,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel
 
-from attention_triage import hook, review, session, store, suppress
+from attention_triage import hook, review, store, suppress
 from attention_triage.digest import digest
 
 # Loopback only: the digest shows commands, paths and URLs from every project.
@@ -107,15 +107,6 @@ def mark_all(body: MarkAll) -> dict:
     at = min(body.as_of, datetime.now(UTC))  # a client can't start the window in the future
     with closing(store.connect()) as conn:
         return {"dismissed": review.mark_all(conn, body.flag_ids, at)}
-
-
-@app.get("/api/sessions/{session_id}")
-def get_session(session_id: str) -> dict:
-    with closing(store.connect()) as conn:
-        found = session.detail(conn, session_id)
-    if found is None:
-        raise HTTPException(404, "No such session")
-    return found
 
 
 @app.get("/api/suppressions")

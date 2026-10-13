@@ -99,30 +99,3 @@ export async function fetchSuppressions(): Promise<Suppression[]> {
 
 // Undo: later matches are flagged again, and the flags it hid reopen.
 export const undoSuppression = (id: number) => post(`/api/suppressions/${id}`, {}, "DELETE");
-
-// The shape of GET /api/sessions/{id} (src/attention_triage/session.py).
-export type SessionEvent = {
-  // tool_call, or session_start, turn_end, session_end, subagent_start, subagent_stop; or a
-  // tool_result, tool_failure or permission_denied whose call wasn't stored
-  event_type: string;
-  tool: string | null;
-  target_kind: string | null;
-  target: string | null;
-  stated_reason: string | null;
-  project: string | null;
-  time: string;
-  outcome: Flag["outcome"] | null; // tool calls only
-  flags: { id: number; rule: string; severity: Flag["severity"]; label: string; reason: string; status: string }[];
-};
-
-export type SessionDetail = {
-  session_id: string;
-  events: SessionEvent[]; // the main agent's
-  subagents: { agent_id: string; agent_type: string | null; events: SessionEvent[] }[];
-};
-
-export async function fetchSession(id: string): Promise<SessionDetail> {
-  const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return response.json();
-}
