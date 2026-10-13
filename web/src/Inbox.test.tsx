@@ -137,6 +137,12 @@ test("a refused pattern shows the server's reason", async () => {
   expect(await screen.findAllByText(reason)).toHaveLength(2);
 });
 
+test("the Suppressions page is always one click away, even with nothing hidden lately", async () => {
+  serve([digest()]);
+  render(<Inbox />);
+  expect(await screen.findByRole("link", { name: "Suppressions →" })).toHaveAttribute("href", "#/suppressions");
+});
+
 test("the headline counts what was suppressed, linking to the Suppressions page", async () => {
   const hidden = digest();
   hidden.headline.suppressed = 3;

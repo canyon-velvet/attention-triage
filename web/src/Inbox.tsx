@@ -48,6 +48,9 @@ export function Inbox() {
   const { actions, captured, need_review, suppressed, since } = digest.headline;
   return (
     <main>
+      <p>
+        <a href="#/suppressions">Suppressions →</a>
+      </p>
       <h1>
         {`${actions} actions · ${captured} captured · ${need_review} need review`}
         {suppressed > 0 && (

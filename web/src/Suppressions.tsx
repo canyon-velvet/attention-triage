@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchSuppressions, type Suppression, undoSuppression } from "./api";
+import { KIND_LABELS } from "./SuppressForm";
 
 const when = (ts: string) => <time dateTime={ts}>{new Date(ts).toLocaleString()}</time>;
 
@@ -44,12 +45,14 @@ export function Suppressions() {
         {suppressions?.map((s) => (
           <li key={s.id} className="flag">
             <p>
-              <code>{s.pattern}</code>
-              {s.kind === "exact" ? "" : ` (${s.kind})`} · {s.rule} · {s.project ?? "No project"}
+              {KIND_LABELS[s.kind]}: <code>{s.pattern}</code>
             </p>
-            {s.note && <p>{s.note}</p>}
             <p>
-              Created {when(s.created_at)} · {s.hits} hits
+              Rule: {s.rule} · Project: {s.project ?? "none"}
+            </p>
+            {s.note && <p>Note: {s.note}</p>}
+            <p>
+              Created {when(s.created_at)} · {s.hits === 1 ? "1 hit" : `${s.hits} hits`}
               {s.last_hit && <> · last {when(s.last_hit)}</>}
             </p>
             {s.suggestion && <p className="suggestion">{s.suggestion}</p>}
