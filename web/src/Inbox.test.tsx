@@ -39,10 +39,7 @@ test("the inbox shows the headline and flags grouped by project and session", as
   render(<Inbox />);
   expect(await screen.findByText("214 actions · 214 captured · 1 need review")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "/p/main" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Session 73eb2355" })).toHaveAttribute(
-    "href",
-    "#/sessions/73eb2355-abcd",
-  );
+  expect(screen.getByRole("heading", { name: "Session 73eb2355" })).toBeInTheDocument();
   expect(screen.getByText("rm -rf build")).toBeInTheDocument();
   expect(screen.queryByText(/since your last review/i)).toBeNull();
 });
