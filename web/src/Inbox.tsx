@@ -8,6 +8,7 @@ import {
   suppressFlag,
 } from "./api";
 import { FlagItem } from "./FlagItem";
+import { sessionLink } from "./Session";
 
 export function Inbox() {
   const [digest, setDigest] = useState<Digest>();
@@ -78,7 +79,13 @@ export function Inbox() {
           <h2>{project ?? "No project"}</h2>
           {sessions.map(({ session_id, flags }) => (
             <section key={session_id ?? ""}>
-              <h3>{`Session ${session_id?.slice(0, 8) ?? "unknown"}`}</h3>
+              <h3>
+                {session_id ? (
+                  <a href={sessionLink(session_id)}>{`Session ${session_id.slice(0, 8)}`}</a>
+                ) : (
+                  "Session unknown"
+                )}
+              </h3>
               <ul className="flags">
                 {flags.map((flag) => (
                   <FlagItem
