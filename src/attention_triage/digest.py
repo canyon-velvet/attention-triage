@@ -3,6 +3,7 @@
 import json
 import sqlite3
 
+from attention_triage.guidance import guidance
 from attention_triage.outcome import outcome
 from attention_triage.review import last_review, now
 
@@ -10,7 +11,8 @@ from attention_triage.review import last_review, now
 def digest(conn: sqlite3.Connection) -> dict:
     """Flags sort high severity first, then oldest first. Projects and sessions keep the order of
     their first flag, so a group holding a high flag comes before one that doesn't. Each flag
-    carries its call's outcome (outcome.py), worked out now from the events stored so far.
+    carries its call's outcome (outcome.py) and fix-it guidance (guidance.py), worked out now from
+    the events stored so far.
 
     A git worktree's flags group under its main checkout (repo_root); each flag's `project` still
     names the worktree it ran in. Events stored before repo_root existed group by project_root."""
@@ -42,7 +44,9 @@ def digest(conn: sqlite3.Connection) -> dict:
     for row in cursor:
         flag = {**dict(row), "evidence": json.loads(row["evidence"])}
         session_id, repo = flag.pop("session_id"), flag.pop("repo")
-        flag["outcome"] = outcome(conn, flag.pop("event_key"))
+        key = flag.pop("event_key")
+        flag["outcome"] = outcome(conn, key)
+        flag["guidance"] = guidance(conn, key, flag["evidence"])
         projects.setdefault(repo, {}).setdefault(session_id, []).append(flag)
     return {
         "as_of": as_of,

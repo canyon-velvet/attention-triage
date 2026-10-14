@@ -113,6 +113,7 @@ def test_each_flag_says_what_ran_why_and_which_rule(conn):
     bash(conn, "/p/a", "s1", 1)
     [flag] = digest(conn)["projects"][0]["sessions"][0]["flags"]
     assert isinstance(flag.pop("id"), int)
+    assert flag.pop("guidance") == {"files": [], "commits": []}  # test_guidance.py covers it
     assert flag == {
         "tool": "Bash",
         "target_kind": "command",

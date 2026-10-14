@@ -182,7 +182,8 @@ rules:
   - **Acknowledge** ("seen; not fine; I'll handle it").
 - **Mark all reviewed** clears the rest. Opening the page clears nothing.
 - "N suppressed" count with a link to the Suppressions page.
-- Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`), and where in `policy.yaml` to tighten the rule. The UI never runs git or edits the policy.
+- Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`). The UI never runs git or edits the policy.
+  - Built from captured events at read time (#18), never by running git. Files: the flagged call's own (a file tool's path; for Bash, Claude Code's `changedFiles`). Commits: those the call or a later one in its session reports (`git commit` prints `[branch sha] subject`); best-effort. Commands use `git -C <project>` with shell-quoted paths, only for files inside a project that is (still) a git checkout; other files are listed without commands. A path that redaction cut is left out. An item with neither files nor commits shows no guidance. No per-item policy hint: it was the same for every item of a rule, and stopping a rule flagging something is what suppressions and their config suggestions are for.
 
 No session detail page (#17 dropped): a full action list rebuilds the transcript this tool spares you. The inbox is the review surface; each session heading there shows its coverage (§7).
 
