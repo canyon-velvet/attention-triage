@@ -46,7 +46,7 @@ def digest(conn: sqlite3.Connection) -> dict:
         session_id, repo = flag.pop("session_id"), flag.pop("repo")
         key = flag.pop("event_key")
         flag["outcome"] = outcome(conn, key)
-        flag["guidance"] = guidance(conn, key, flag["rule"], flag["evidence"])
+        flag["guidance"] = guidance(conn, key, flag["evidence"])
         projects.setdefault(repo, {}).setdefault(session_id, []).append(flag)
     return {
         "as_of": as_of,

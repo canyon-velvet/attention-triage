@@ -1,6 +1,6 @@
 """Fix-it guidance for an inbox item (SPEC.md §6): the files its call changed, the session's commits
-made after it, copy-ready git commands, and the policy.yaml setting for its rule. Built from what
-was captured; Triage never runs git or edits the policy (ADR-0002).
+made after it, and copy-ready git commands. Built from what was captured; Triage never runs git
+(ADR-0002). How to stop a rule flagging something is left to suppressions and their suggestions.
 
 Commands are for the project the call ran in, and only when that is a git checkout. A file outside
 it gets no commands: git can't diff or restore it from there. Every path is shell-quoted."""
@@ -11,37 +11,16 @@ import re
 import shlex
 import sqlite3
 
-from attention_triage import policy
 from attention_triage.suppress import HIDDEN
 
 # `git commit` prints "[main 1a2b3c4] subject", or "[main (root-commit) 1a2b3c4]", or
 # "[detached HEAD 1a2b3c4]". Only the hex id goes into a command.
 COMMIT = re.compile(r"^\[[^\]\n]+? ([0-9a-f]{7,40})\] (.*)$", re.MULTILINE)
 FILE_TOOLS = {"Write", "Edit", "NotebookEdit"}
-POLICY = {
-    "outside_project_write": (
-        "allowed_paths",
-        "To allow writes to that folder, add it to rules.outside_project_write.allowed_paths.",
-    ),
-    "config_edit": (
-        "extra_protected_paths",
-        "To also flag edits of other files, add them to rules.config_edit.extra_protected_paths;"
-        " to stop this rule, set rules.config_edit.enabled: false.",
-    ),
-    "unlisted_domain": (
-        "allowed_domains",
-        "To stop flagging this host, add it to rules.unlisted_domain.allowed_domains.",
-    ),
-    "sandbox_bypass": (
-        "enabled",
-        "To stop this rule, set rules.sandbox_bypass.enabled: false; to make it less urgent, set"
-        " rules.sandbox_bypass.severity: review.",
-    ),
-}
 
 
-def guidance(conn: sqlite3.Connection, event_key: str, rule_id: str, evidence: dict) -> dict:
-    """{"files", "commits", "policy"} for the flag of `rule_id` on the call stored as `event_key`.
+def guidance(conn: sqlite3.Connection, event_key: str, evidence: dict) -> dict:
+    """{"files", "commits"} for a flag on the call stored as `event_key`, with its `evidence`.
     Commits are those reported by this call or any later one in its session."""
     session_id, tool, tool_use_id, target, root, ts = conn.execute(
         "SELECT session_id, tool_name, tool_use_id, target, project_root, ts FROM events"
@@ -60,7 +39,6 @@ def guidance(conn: sqlite3.Connection, event_key: str, rule_id: str, evidence: d
         own = [resp for t, _, resp in responses if t == tool_use_id and isinstance(resp, dict)]
         diff = own[0].get("bashEditDiff") if own else None
         changed = diff.get("changedFiles", []) if isinstance(diff, dict) else []
-    key, hint = POLICY[rule_id]
     return {
         "files": [file(root, p) for p in changed if isinstance(p, str) and not HIDDEN.search(p)],
         "commits": [
@@ -69,7 +47,6 @@ def guidance(conn: sqlite3.Connection, event_key: str, rule_id: str, evidence: d
             if isinstance(resp, dict) and isinstance(resp.get("stdout"), str)
             for commit in commits(result_root, resp["stdout"])
         ],
-        "policy": {"file": str(policy.path()), "key": f"rules.{rule_id}.{key}", "hint": hint},
     }
 
 

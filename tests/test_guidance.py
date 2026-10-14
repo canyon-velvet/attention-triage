@@ -63,15 +63,12 @@ def test_a_file_in_the_checkout_gets_quoted_diff_and_restore_commands(conn, repo
             ],
         }
     ]
-    assert found["policy"]["key"] == "rules.config_edit.extra_protected_paths"
-    assert found["policy"]["file"].endswith(".attention-triage/policy.yaml")
 
 
 def test_a_file_outside_the_checkout_gets_no_git_commands(conn, repo):
     call(conn, repo, "Write", {"file_path": "/srv/notes.txt", "content": "x"})  # not a temp dir
     [found] = guidance(conn)
     assert found["files"] == [{"path": "/srv/notes.txt", "commands": []}]
-    assert found["policy"]["key"] == "rules.outside_project_write.allowed_paths"
 
 
 def test_a_bash_calls_changed_files_and_later_commits_get_commands(conn, repo):
@@ -94,7 +91,6 @@ def test_a_bash_calls_changed_files_and_later_commits_get_commands(conn, repo):
     assert found["commits"] == [
         {"sha": "1a2b3c4", "subject": "Fix it", "command": f"{git} revert 1a2b3c4"}
     ]
-    assert found["policy"]["key"] == "rules.sandbox_bypass.enabled"
 
 
 def test_without_a_git_checkout_there_are_no_commands(conn, repo, tmp_path):
@@ -124,8 +120,6 @@ def test_a_path_that_redaction_cut_is_left_out(conn, repo):
     assert found["files"] == []
 
 
-def test_an_unlisted_domain_flag_names_its_allow_list(conn, repo):
+def test_a_call_that_changed_nothing_has_no_guidance(conn, repo):
     call(conn, repo, "WebFetch", {"url": "https://unlisted.example/x", "prompt": "read"})
-    [found] = guidance(conn)
-    assert (found["files"], found["commits"]) == ([], [])
-    assert found["policy"]["key"] == "rules.unlisted_domain.allowed_domains"
+    assert guidance(conn) == [{"files": [], "commits": []}]
