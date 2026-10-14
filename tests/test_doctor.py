@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from attention_triage import cli, doctor
+from attention_triage import cli, doctor, policy, store
+from attention_triage.normalize import normalize
 
 
 @pytest.fixture(autouse=True)
@@ -82,11 +83,70 @@ def test_a_hook_program_that_is_gone_is_reported(home):
     assert "triage install" in result.fix
 
 
+def test_a_database_that_cant_be_written_is_reported():
+    """Another program holds the write lock past the 2 s busy timeout (as root, file permissions
+    can't make it fail)."""
+    with store.connect() as holder:
+        holder.execute("BEGIN IMMEDIATE")
+        result = doctor.database()
+        holder.rollback()
+    assert not result.ok and "database is locked" in result.what and result.fix
+
+
+def test_buffered_events_are_stored_then_pass(home):
+    event = {
+        "hook_event_name": "PreToolUse",
+        "session_id": "s1",
+        "cwd": "/p/a",
+        "tool_name": "Bash",
+    }
+    event |= {
+        "tool_use_id": "t1",
+        "tool_input": {"command": "ls", "dangerouslyDisableSandbox": True},
+    }
+    store.spool(normalize(event))
+    assert doctor.spool().ok
+    assert not store.spool_path().exists()
+    with store.connect() as conn:
+        assert conn.execute("SELECT count(*) FROM flags").fetchone() == (1,)  # flagged too
+
+
+def test_buffered_events_that_cant_be_stored_are_reported(monkeypatch):
+    store.spool({"not": "an event"})
+    result = doctor.spool()
+    assert not result.ok and str(store.spool_path()) in result.what and result.fix
+    assert store.spool_path().exists()  # kept for the next run
+
+
+def test_an_invalid_policy_is_reported():
+    policy.path().write_text(policy.DEFAULT_POLICY.replace("sandbox_bypass:", "sandbox_bypas:"))
+    result = doctor.policy_file()
+    assert not result.ok and "sandbox_bypas" in result.what
+    assert "delete the file" in result.fix
+    os.remove(policy.path())
+    assert doctor.policy_file().ok  # the default comes back
+
+
+def test_a_data_dir_that_isnt_a_folder_is_reported_and_the_other_checks_still_run(home):
+    shutil.rmtree(home / ".attention-triage")
+    (home / ".attention-triage").write_text("")
+    results = doctor.run()
+    assert len(results) == len(doctor.CHECKS)
+    database = results[doctor.CHECKS.index(doctor.database)]
+    assert not database.ok and database.what.startswith("Can't write to") and database.fix
+
+
 def test_settings_that_cant_be_read_are_reported():
     cli.settings_path().unlink()
     cli.settings_path().mkdir()
     result = doctor.hooks()
     assert not result.ok and "can't be read" in result.what
+
+
+def test_a_policy_that_isnt_utf8_is_reported():
+    policy.path().write_bytes(b"\xff\xfe")
+    result = doctor.policy_file()
+    assert not result.ok and "is invalid" in result.what and result.fix
 
 
 def test_a_hook_named_by_path_or_home_is_found(home, monkeypatch):
