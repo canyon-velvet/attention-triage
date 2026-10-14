@@ -252,3 +252,17 @@ def test_a_db_from_before_last_seen_gets_the_column(home):
         old.commit()
     [result] = doctor.drift()  # read as first_seen
     assert result.warning and "`PreToolUse.cwd` missing" in result.what
+
+
+def test_the_inbox_warning_is_empty_when_capture_looks_healthy():
+    assert doctor.problems() == []
+
+
+def test_the_inbox_warning_names_what_is_wrong_without_changing_anything(home):
+    cli.main(["uninstall"])
+    store.spool({"not": "an event"})
+    log_errors(1)
+    problems = doctor.problems()
+    assert [p.split(" ")[0] for p in problems] == ["Hooks", "Some", "The"]
+    assert problems[1] == "Some captured events couldn't be stored yet"
+    assert store.spool_path().exists()  # read only: doctor's spool check would store it

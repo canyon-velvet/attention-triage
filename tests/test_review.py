@@ -158,7 +158,6 @@ def test_mark_all_starts_a_new_review_window(conn):
     bash(conn, "/p/a", "s1", 20, bypass=False)
     assert digest(conn)["headline"] == {
         "actions": 2,
-        "captured": 2,
         "need_review": 1,
         "suppressed": 0,
         "since": None,
@@ -167,7 +166,6 @@ def test_mark_all_starts_a_new_review_window(conn):
     review.mark_all(conn, list(open_flags(conn).values()), at=T0 + timedelta(minutes=30))
     assert digest(conn)["headline"] == {
         "actions": 0,
-        "captured": 0,
         "need_review": 0,
         "suppressed": 0,
         "since": "2026-10-08T12:30:00.000+00:00",

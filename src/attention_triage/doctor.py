@@ -162,14 +162,29 @@ def drift() -> list[Result]:
     ]
 
 
+def waiting() -> Result:
+    """The spool check without storing anything, for the inbox: loading it only reads."""
+    if store.spool_path().exists():
+        return Result(False, "Some captured events couldn't be stored yet", "Run `triage doctor`.")
+    return Result(True, "No buffered events waiting")
+
+
 CHECKS = [hooks, database, spool, policy_file, hook_errors, drift]
+# What the inbox warns about: the checks that only read, without taking the DB's write lock. An
+# invalid policy shows up as hook errors; a broken DB means the inbox doesn't load at all.
+INBOX_CHECKS = [hooks, waiting, hook_errors]
 
 
-def run() -> list[Result]:
+def problems() -> list[str]:
+    """What is wrong with capture, for the inbox's warning; empty when it looks healthy."""
+    return [result.what for result in run(INBOX_CHECKS) if not result.ok]
+
+
+def run(checks=None) -> list[Result]:
     """Every check runs, and none ends doctor in a traceback: one that fails unexpectedly is a
     failed result too."""
     results = []
-    for check in CHECKS:
+    for check in CHECKS if checks is None else checks:
         try:
             found = check()
             results += found if isinstance(found, list) else [found]

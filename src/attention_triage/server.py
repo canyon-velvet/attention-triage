@@ -41,8 +41,12 @@ async def same_origin_writes(request: Request, call_next):
 
 @app.get("/api/digest")
 def get_digest() -> dict:
+    """The digest, plus what is wrong with capture (doctor's read-only checks), so a problem is
+    seen in the inbox without running `triage doctor`."""
+    from attention_triage import doctor  # imported here: doctor -> cli -> server
+
     with closing(store.connect()) as conn:
-        return digest(conn)
+        return {**digest(conn), "capture_problems": doctor.problems()}
 
 
 class Pattern(BaseModel):

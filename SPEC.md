@@ -35,7 +35,7 @@ Claude Code ──(hook events, async)──▶ triage-hook ──▶ SQLite (~/
 
 triage ui ──▶ FastAPI (127.0.0.1) ──▶ JSON API ──▶ React/TS SPA (static, served by FastAPI)
                     │
-                    └─ reads transcripts (~/.claude/projects/…) for capture-coverage check
+                    └─ runs `triage doctor`'s read-only checks to warn of capture problems
 ```
 
 - **Language split:** Python owns storage, rules, hook, API, CLI. TypeScript is UI only.
@@ -55,7 +55,6 @@ src/attention_triage/
   policy.py       # load/validate policy.yaml, policy_version
   rules/          # one module per rule
   outcome.py      # derive approved/denied/failed per tool_use_id
-  transcript.py   # coverage check (best-effort)
   server.py       # FastAPI app + static SPA
   static/         # built web assets (generated)
 tests/
@@ -170,7 +169,7 @@ rules:
 ## 6. Review (digest UI)
 
 ### Inbox (main screen)
-- Headline: **"214 actions · 214 captured · 3 need review"** for everything since the last review. If coverage is incomplete (§7) the headline becomes a plain-language warning instead of a reassuring count.
+- Headline: **"214 actions · 3 need review"** for everything since the last review. Above it, a warning when `triage doctor`'s read-only checks find a capture problem (§7): "Actions may be missing from this inbox. Run `triage doctor` for the fix.", with what is wrong.
 - Open flags grouped by project → session, high severity first.
 - Each item: what ran (command / path / URL), stated reason, outcome (§5), rule + severity + label, evidence (e.g. the sandbox error that preceded a retry), time, project.
 - Item actions:
@@ -185,7 +184,7 @@ rules:
 - Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`). The UI never runs git or edits the policy.
   - Built from captured events at read time (#18), never by running git. Files: the flagged call's own (a file tool's path; for Bash, Claude Code's `changedFiles`). Commits: those the call or a later one in its session reports (`git commit` prints `[branch sha] subject`); best-effort. Commands use `git -C <project>` with shell-quoted paths, only for files inside a project that is (still) a git checkout; other files are listed without commands. A path that redaction cut is left out. An item with neither files nor commits shows no guidance. No per-item policy hint: it was the same for every item of a rule, and stopping a rule flagging something is what suppressions and their config suggestions are for.
 
-No session detail page (#17 dropped): a full action list rebuilds the transcript this tool spares you. The inbox is the review surface; each session heading there shows its coverage (§7).
+No session detail page (#17 dropped): a full action list rebuilds the transcript this tool spares you. The inbox is the review surface.
 
 ### Suppressions page
 Every "future" dismissal: rule, pattern, project, note, created, hit count, last hit, **undo**. Recurring suppressions show a config suggestion, e.g. "matched 14× this week — consider adding `docker *` to sandbox `excludedCommands`."
@@ -198,9 +197,9 @@ Every "future" dismissal: rule, pattern, project, note, created, hit count, last
 
 ## 7. Capture health
 
-All four in v1:
+In v1 (item 2 dropped, #21):
 1. **Spool fallback** — DB write failure → `spool.jsonl`; ingested on the next successful run. Failures become delays, not loss.
-2. **Transcript coverage** — for each session, count tool calls in Claude Code's transcript JSONL and compare with captured `PreToolUse` events, matched by tool_use id (the spike confirmed hook and transcript ids are identical). Shown in the headline and on each session heading in the inbox. The transcript format is undocumented: on parse failure show "coverage unknown", never guess.
+2. **Transcript coverage** — dropped (#21). Comparing Claude Code's transcript with captured events would also catch losses on Claude Code's side, but it depends on an undocumented format, and `triage doctor` covers the known causes (hooks missing or gone, hook errors, a waiting spool). Instead the inbox shows doctor's read-only checks as a warning, so a problem is seen without running doctor. A headline "N captured" count, which only repeated "N actions", is gone too.
 3. **In-session notice** — on the first hook failure in a session, emit one `systemMessage` ("attention-triage: capture failing (<reason>); events buffered. Run `triage doctor`."), rate-limited to once per session. Async hooks' output is ignored by Claude Code, so the notice comes from a separate synchronous `SessionStart` hook that checks for recent failures.
    - **Known limits** (fixes deferred; to be thought through later):
      - *Late:* a failure is reported at the next `SessionStart` (start, resume, `/clear`, compact), not when it happens.
@@ -234,7 +233,7 @@ All four in v1:
 - **M1 — Capture:** hook, normalize, redact, store, dedup, spool; `install` / `uninstall` / `doctor`.
 - **M2 — Rules:** policy loading/versioning, R1–R4, outcome derivation, `reeval`. Fixture tests first.
 - **M3 — Digest:** API + inbox, dismiss/ack/mark-all, suppressions page.
-- **M4 — Health & retention:** transcript coverage, in-session notice, purge.
+- **M4 — Health & retention:** in-session notice, doctor, capture warning in the inbox, purge.
 - Then: dogfood on real sessions for a week before any v2 work.
 
 ### Questions the spike must answer

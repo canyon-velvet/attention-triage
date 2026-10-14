@@ -9,7 +9,8 @@ const AS_OF = "2026-10-12T09:00:00.000+00:00";
 function digest(flags = [flag], since: string | null = null, actions = 214): Digest {
   return {
     as_of: AS_OF,
-    headline: { actions, captured: actions, need_review: flags.length, suppressed: 0, since },
+    capture_problems: [],
+    headline: { actions, need_review: flags.length, suppressed: 0, since },
     projects: flags.length
       ? [{ project: "/p/main", sessions: [{ session_id: "73eb2355-abcd", flags }] }]
       : [],
@@ -37,7 +38,8 @@ function serve(digests: (Digest | null)[], postStatus = 200, postDetail?: unknow
 test("the inbox shows the headline and flags grouped by project and session", async () => {
   serve([digest()]);
   render(<Inbox />);
-  expect(await screen.findByText("214 actions · 214 captured · 1 need review")).toBeInTheDocument();
+  expect(await screen.findByText("214 actions · 1 need review")).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).toBeNull(); // capture looks healthy
   expect(screen.getByRole("heading", { name: "/p/main" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Session 73eb2355" })).toBeInTheDocument();
   expect(screen.getByText("rm -rf build")).toBeInTheDocument();
@@ -149,7 +151,7 @@ test("the headline counts what was suppressed, linking to the Suppressions page"
   serve([hidden]);
   render(<Inbox />);
   const headline = await screen.findByRole("heading", { level: 1 });
-  expect(headline).toHaveTextContent("214 actions · 214 captured · 1 need review · 3 suppressed");
+  expect(headline).toHaveTextContent("214 actions · 1 need review · 3 suppressed");
   expect(screen.getByRole("link", { name: "3 suppressed" })).toHaveAttribute("href", "#/suppressions");
 });
 
@@ -160,4 +162,14 @@ test("if the reload after an action fails, the last inbox stays with the problem
   expect(await screen.findByText("Couldn't reload: HTTP 500")).toBeInTheDocument();
   expect(screen.getByText("rm -rf build")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Acknowledge" })).toBeEnabled();
+});
+
+test("a capture problem is shown above the headline, with what to run", async () => {
+  const broken = digest();
+  broken.capture_problems = ["Hooks missing from /home/me/.claude/settings.json: PostToolUse"];
+  serve([broken]);
+  render(<Inbox />);
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent("Actions may be missing from this inbox. Run `triage doctor` for the fix.");
+  expect(alert).toHaveTextContent("Hooks missing from /home/me/.claude/settings.json: PostToolUse");
 });

@@ -50,10 +50,8 @@ def digest(conn: sqlite3.Connection) -> dict:
         projects.setdefault(repo, {}).setdefault(session_id, []).append(flag)
     return {
         "as_of": as_of,
-        # TODO(#21): captured = tool calls matched in the transcript; until then, every action.
         "headline": {
             "actions": actions,
-            "captured": actions,
             "need_review": sum(len(f) for s in projects.values() for f in s.values()),
             "suppressed": suppressed,
             "since": since,

@@ -45,14 +45,24 @@ export function Inbox() {
 
   if (error) return <p className="error">Couldn't load the digest: {error}</p>;
   if (!digest) return <p>Loading…</p>;
-  const { actions, captured, need_review, suppressed, since } = digest.headline;
+  const { actions, need_review, suppressed, since } = digest.headline;
   return (
     <main>
       <p>
         <a href="#/suppressions">Suppressions →</a>
       </p>
+      {digest.capture_problems.length > 0 && (
+        <div className="error" role="alert">
+          <p>Actions may be missing from this inbox. Run `triage doctor` for the fix.</p>
+          <ul>
+            {digest.capture_problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <h1>
-        {`${actions} actions · ${captured} captured · ${need_review} need review`}
+        {`${actions} actions · ${need_review} need review`}
         {suppressed > 0 && (
           <>
             {" · "}
