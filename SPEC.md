@@ -205,7 +205,7 @@ All four in v1:
    - **Known limits** (fixes deferred; to be thought through later):
      - *Late:* a failure is reported at the next `SessionStart` (start, resume, `/clear`, compact), not when it happens.
      - *Only spooled failures:* errors before the spool step (bad stdin, a bug in `normalize`/`redact`, a failed spool write) lose the event and are only logged; the notice doesn't mention them.
-     - *Hook never runs:* e.g. `triage-hook` uninstalled or its editable source moved. Nothing inside the hook can report this.
+     - *Hook never runs:* e.g. `triage-hook` uninstalled or its editable source moved. Nothing inside the hook can report this; `triage doctor` does (#20).
 4. **`triage doctor`** — checks hooks still present in settings, DB writable, spool empty, policy valid, recent hook errors; prints the fix in plain language.
 
 ## 8. CLI
