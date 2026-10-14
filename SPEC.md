@@ -101,7 +101,7 @@ Events: `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, 
 - Store **what and where**, not contents. File contents in Write/Edit inputs → sha256 + byte size + first ~500 chars (redacted). Tool outputs truncated to ~2,000 chars. Limits configurable.
 - Secret masking before write: common token formats (AWS `AKIA…`, GitHub `gh[pousr]_…`, `sk-…`, bearer tokens, PEM private-key blocks) and `key/secret/token/password = value` patterns.
 - Retention: delete events older than `retention_days` (default 7; a longer history isn't useful for review) — on `triage ui` start and via `triage purge`.
-  - **Interim (until the UI exists):** the async capture hook purges events older than 7 days (`store.RETENTION_DAYS`) right after storing each `SessionStart` event, so retention works without `triage ui`. #22 decides whether to keep this hook purge alongside the UI one. The 7 days is a constant for now; reading it from `retention_days` in `policy.yaml` is deferred until the UI exists (#22). Purging frees space for reuse but doesn't shrink the file (no `VACUUM`).
+  - (#22) The async capture hook also purges, right after storing each `SessionStart` event, so retention works without opening the UI. `retention_days` is a whole number from 1 to 36500 (a century: effectively "keep everything", while the purge cutoff stays a representable date). With an invalid or unreadable `policy.yaml` nothing is purged, and `triage ui` still starts: deleting by the default could remove days the user asked to keep. `triage purge` says how many events it deleted. Purging frees space for reuse but doesn't shrink the file (no `VACUUM`). `hook-errors.log` and `notified-sessions` are not trimmed.
 
 ## 5. Rules
 
@@ -131,7 +131,7 @@ rules:
                       localhost, 127.0.0.1, "::1"]   # localhost entries: this machine
 ```
 
-`policy_version` = hash of the normalized file. Every flag stores the version that produced it. `triage reeval [--since]` re-runs rules over stored events (#19): it adds the flags they lack (a tightened policy, an insert that failed), corrects those that differ while keeping their status, and reopens a flag left suppressed by a deleted suppression. It never removes a flag; after loosening the policy, clear old flags in the inbox. Path rules see the disk and settings files as they are now; a flag's recorded path is kept, as it names the file the write really reached. `--since` takes a local date or date-time.
+`policy_version` = hash of the normalized rules' settings (`retention_days` changes no flag, so it isn't part of it). Every flag stores the version that produced it. `triage reeval [--since]` re-runs rules over stored events (#19): it adds the flags they lack (a tightened policy, an insert that failed), corrects those that differ while keeping their status, and reopens a flag left suppressed by a deleted suppression. It never removes a flag; after loosening the policy, clear old flags in the inbox. Path rules see the disk and settings files as they are now; a flag's recorded path is kept, as it names the file the write really reached. `--since` takes a local date or date-time.
 
 ### Flag record
 `rule_id`, `severity`, `reason` (human sentence), `label` (rule-specific, below), `evidence` (JSON), `policy_version`, `status` (`open` / `dismissed` / `acknowledged` / `suppressed`), `suppression_id`, timestamps.

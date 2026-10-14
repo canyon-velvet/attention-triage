@@ -59,9 +59,10 @@ def flag(conn, events: list[dict]) -> None:
 
 def purge_old_events(conn) -> None:
     """Retention without the UI: runs at each session start, in this async hook so no one waits.
-    The event is already stored, so a failed purge is logged, never spooled."""
+    The event is already stored, so a failed purge is logged, never spooled. An invalid policy
+    skips it: deleting by a default could remove days the user asked to keep."""
     try:
-        store.purge(conn)
+        store.purge(conn, policy.load()[0]["retention_days"])
     except Exception:
         log_error()
 

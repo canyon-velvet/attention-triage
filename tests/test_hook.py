@@ -327,7 +327,7 @@ def test_purging_an_event_deletes_its_flags(tmp_path, monkeypatch):
     with closing(store.connect()) as conn:
         store.insert_event(conn, event)
         store.insert_flags(conn, rules.evaluate(event, *policy.parse(policy.DEFAULT_POLICY)))
-        store.purge(conn)
+        store.purge(conn, store.RETENTION_DAYS)
     assert rows(tmp_path) == [] and rows(tmp_path, "flags") == []
 
 
@@ -349,3 +349,23 @@ def test_an_event_spooled_before_repo_root_existed_is_still_stored(tmp_path, mon
     store.spool(old)
     run_hook(tmp_path, (FIXTURES / "auto-webfetch" / "01-PreToolUse.json").read_bytes())
     assert len(rows(tmp_path)) == 2 and spool_lines(tmp_path) == []
+
+
+def test_session_start_keeps_events_for_the_policys_retention_days(tmp_path, monkeypatch):
+    seed_events_aged(tmp_path, monkeypatch, [10, 3])
+    policy.path().parent.mkdir(parents=True, exist_ok=True)
+    policy.path().write_text(
+        policy.DEFAULT_POLICY.replace("retention_days: 7", "retention_days: 30")
+    )
+    run_hook(tmp_path, (FIXTURES / "session-lifecycle/01-SessionStart.json").read_bytes())
+    assert len([r for r in rows(tmp_path) if r["tool_name"] == "WebFetch"]) == 2  # 10 days < 30
+
+
+def test_an_invalid_policy_skips_the_purge(tmp_path, monkeypatch):
+    """Deleting by the default could remove days the user asked to keep."""
+    seed_events_aged(tmp_path, monkeypatch, [10, 3])
+    policy.path().write_text(
+        policy.DEFAULT_POLICY.replace("retention_days: 7", "retention_days: 0")
+    )
+    run_hook(tmp_path, (FIXTURES / "session-lifecycle/01-SessionStart.json").read_bytes())
+    assert len([r for r in rows(tmp_path) if r["tool_name"] == "WebFetch"]) == 2

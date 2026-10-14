@@ -8,8 +8,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-# Temporary: SPEC §4 reads this from retention_days in policy.yaml (default 7). Deferred until
-# the review UI exists (#22).
+# The default for retention_days in policy.yaml (SPEC §4): a longer history isn't useful for review.
 RETENTION_DAYS = 7
 
 COLUMNS = [
@@ -197,12 +196,13 @@ def record_drift(
     conn.commit()
 
 
-def purge(conn: sqlite3.Connection, days: int = RETENTION_DAYS) -> None:
-    """Delete events captured more than `days` ago. `ts` is always UTC in one ISO layout, so
-    comparing the strings compares the times."""
+def purge(conn: sqlite3.Connection, days: int) -> int:
+    """Delete events captured more than `days` ago, and their flags with them. Returns how many
+    events. `ts` is always UTC in one ISO layout, so comparing the strings compares the times."""
     cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat(timespec="milliseconds")
-    conn.execute("DELETE FROM events WHERE ts < ?", [cutoff])
+    deleted = conn.execute("DELETE FROM events WHERE ts < ?", [cutoff]).rowcount
     conn.commit()
+    return deleted
 
 
 def spool_path() -> Path:

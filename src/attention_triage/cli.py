@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> None:
     install_parser.add_argument("--dry-run", action="store_true", help="show the diff only")
     commands.add_parser("uninstall", help="remove Triage's hook entries")
     commands.add_parser("doctor", help="check that capture is healthy")
+    commands.add_parser("purge", help="delete events older than retention_days now")
     ui_parser = commands.add_parser("ui", help="serve the review API on 127.0.0.1")
     ui_parser.add_argument("--port", type=int, default=server.DEFAULT_PORT)
     reeval_parser = commands.add_parser("reeval", help="re-check stored events against the policy")
@@ -50,6 +51,8 @@ def main(argv: list[str] | None = None) -> None:
         recheck(args.since)
     elif args.command == "doctor":
         check_health()
+    elif args.command == "purge":
+        purge()
     else:
         server.serve(args.port)
 
@@ -72,6 +75,16 @@ def recheck(since: str | None) -> None:
         f"reeval: {counts['added']} added, {counts['corrected']} corrected,"
         f" {counts['reopened']} reopened (policy {counts['policy_version'][:7]})"
     )
+
+
+def purge() -> None:
+    try:
+        days = policy.load()[0]["retention_days"]
+    except (ValueError, OSError) as e:  # PolicyError, or a file that isn't UTF-8 or can't be read
+        sys.exit(f"policy.yaml is invalid, so nothing was deleted: {e}")
+    with closing(store.connect()) as conn:
+        deleted = store.purge(conn, days)
+    print(f"purge: deleted {deleted} events older than {days} days")
 
 
 def check_health() -> None:
