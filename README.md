@@ -2,31 +2,91 @@
 
 See the few Claude Code actions that need your decision, without reading the whole transcript.
 
-> **Status:** early development. The commands below describe the planned v1; none are released yet.
+> **Status:** v1 works end to end on macOS and Linux. Not yet published; install from a clone.
 
 ## The problem
 
 In auto mode, Claude Code takes hundreds of actions per session. Most are routine. A few deserve a human decision:
 
-- a command retried **outside the sandbox**
+- a command run **outside the sandbox**
 - a file written **outside the project**
-- network access to a **new domain**
+- network access to an **unlisted domain**
 - an edit to **Claude Code settings or hooks**
 
-Those few are buried in the transcript, so you either stop watching or watch everything.
+Attention Triage records every action and shows **only the ones its policy flags**, with enough context to decide quickly. It observes only: it never blocks or prompts. Claude Code's permissions and sandbox stay the enforcement layer.
 
-Attention Triage records every action and shows you **only the few that a policy says need review**, with enough context to decide quickly. It observes only: it never blocks or prompts. Claude Code's permissions and sandbox stay the enforcement layer.
+## Quick start
 
-## Goals
+```bash
+git clone https://github.com/canyon-velvet/attention_triage && cd attention_triage
+uv tool install .        # provides `triage` and `triage-hook`
+triage install           # adds the hooks to ~/.claude/settings.json (backup, diff, confirm)
+```
 
-**v1**
-- Capture every Claude Code hook event reliably, without slowing the agent.
-- Flag actions against a plain-YAML policy and show them in a one-screen review inbox.
-- Make "0 flags" trustworthy: capture gaps are surfaced, never silent.
+Restart running Claude Code sessions, work as usual, then:
 
-**Not in v1:** enforcement; agents other than Claude Code; project-level installs or a shared team server; phone alerts, trend dashboards, a custom rule language or one-click remediation; full network visibility (there is no proxy).
+```bash
+triage ui                # review inbox at http://127.0.0.1:8765
+triage doctor            # if anything looks off
+```
 
-**Long term:** a public tool for teams and multiple agents. v1 keeps that open by storing events in an agent-neutral shape, keeping the raw payload, and recording the project on every event.
+## What gets flagged
+
+| rule | flags | severity |
+|---|---|---|
+| `sandbox_bypass` | a Bash command run with the sandbox disabled; labelled `retry-after-block` (the sandbox blocked it first, with the error as evidence) or `preemptive` | high |
+| `outside_project_write` | Write/Edit outside the project, temp dirs, Claude Code's own plans/jobs/memory dirs and `allowed_paths` | high |
+| `config_edit` | edits to Claude Code settings or hooks, Triage's own data, and `extra_protected_paths` | high |
+| `unlisted_domain` | WebFetch, or an `http(s)://` URL in a Bash command (best-effort, labelled `partial`), to a host outside `allowed_domains` | review |
+
+## Reviewing
+
+The inbox lists open flags by project and session, high severity first: what ran, the stated reason, the outcome (ran, approved at a prompt, failed, denied), and the evidence. For each flag:
+
+- **Fine — this one only** dismisses it; **Acknowledge** means "seen, not fine, I'll handle it".
+- **Fine — this and future ones** creates a suppression: later matches (exact, or a widened command prefix or folder) are stored as suppressed. The **Suppressions** page lists them with hit counts, suggests a config change for recurring ones, and can undo them.
+- **Fix it** (for a file write, a command that changed files, or one followed by commits) gives copy-ready `git diff`, `git restore` and `git revert` commands. Triage never runs them.
+
+**Mark all reviewed** clears the page and starts a new review window. Filter by rule, project or what ran (command, path or URL) to work through a long inbox; marking then clears only what's shown.
+
+If capture looks broken (hooks missing, events stuck, hook errors), a warning above the headline says so.
+
+## Commands
+
+| command | does |
+|---|---|
+| `triage install [--dry-run]` | add the hooks to `~/.claude/settings.json` (backup, diff, confirm) |
+| `triage uninstall` | remove exactly the entries it added (with a backup) |
+| `triage ui [--port]` | serve the review inbox on 127.0.0.1 (default port 8765); purges old events on start |
+| `triage doctor` | check hooks, database, buffered events, policy, recent hook errors and hook-format changes; print fixes; exit 1 on failure |
+| `triage reeval [--since DATE]` | re-check stored events against the current policy: add flags a tightened rule or a failed capture missed, correct ones that differ. Never removes a flag |
+| `triage purge` | delete events older than `retention_days` now |
+
+## Policy
+
+`~/.attention-triage/policy.yaml` is created with the defaults on first use:
+
+```yaml
+version: 1
+retention_days: 7          # events (and their flags) older than this are deleted
+rules:
+  outside_project_write: {enabled: true, severity: high, allowed_paths: []}
+  sandbox_bypass:        {enabled: true, severity: high}
+  config_edit:           {enabled: true, severity: high, extra_protected_paths: []}
+  unlisted_domain:       {enabled: true, severity: review, allowed_domains: [github.com, pypi.org, …]}
+```
+
+Unknown keys are rejected, so a typo can't silently leave a rule on. New settings apply to new events; run `triage reeval` to apply a tightened rule to past ones.
+
+## Reducing noise
+
+Most flags in practice are `sandbox_bypass`: a command failed in Claude Code's sandbox and was retried outside it. Fix the cause in Claude Code's own settings rather than in Triage, so the command stays sandboxed:
+
+- `retry-after-block`: the evidence names what was blocked. Add the path to `sandbox.filesystem.allowWrite` or the host to `sandbox.network.allowedDomains` (e.g. `pypi.org` and `files.pythonhosted.org` for `uv`).
+- `preemptive`: Claude skipped the sandbox without trying. Add `"ask": ["Bash(dangerouslyDisableSandbox:true)"]` under `permissions` to be asked first.
+- Anything you accept as routine: **Fine — this and future ones**.
+
+See [Configure the sandboxed Bash tool](https://code.claude.com/docs/en/sandboxing).
 
 ## How it works
 
@@ -37,36 +97,17 @@ Claude Code ──(hook events, async)──▶ triage-hook ──▶ SQLite (~/
                                           └─▶ if the DB fails: append to spool.jsonl
 
 triage ui ──▶ FastAPI (127.0.0.1) ──▶ review inbox (React)
-                    └─ warns in the inbox when `triage doctor` finds a capture problem
 ```
 
-- Python owns the hook, storage, rules, API and CLI; TypeScript is the UI only.
-- Everything stays on your machine in `~/.attention-triage/`: `triage.db`, `policy.yaml`, `spool.jsonl`, `hook-errors.log`.
-- Installed with `uv tool install`, which provides the `triage` command.
+- The hook always exits 0, so it can never break the agent. A failed write is buffered in `spool.jsonl` and stored on the next run: a delay, not a loss. A small synchronous `SessionStart` hook tells you in-session if capture is failing.
+- **Privacy:** Triage stores what ran and where, not contents. File contents become a hash, a size and a short preview; tool output is cut to about 2,000 characters; common token formats and `key/secret/token/password = value` patterns are masked before anything is written. Everything stays in `~/.attention-triage/`.
+- Events are kept for `retention_days`: purged at each session start, when `triage ui` starts, and by `triage purge`.
 
-## Capture
+**Not in v1:** enforcement, agents other than Claude Code, project-level installs or a team server, alerts and dashboards, full network visibility. See `SPEC.md` for the design and `docs/adr/` for the decisions behind it.
 
-`triage install` adds hooks to `~/.claude/settings.json` (after a backup, a diff and your confirmation): an async capture hook for `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionDenied`, `SessionStart`, `SessionEnd`, `Stop`, `SubagentStart` and `SubagentStop`, plus one small synchronous `SessionStart` hook that warns you in the session if capture has been failing. `triage uninstall` removes exactly the entries it added.
+## Development
 
-On every event the hook:
-
-1. reads the payload and always exits 0, so it can never break the agent;
-2. normalizes it into an agent-neutral event (session, tool, what ran, stated reason, project);
-3. redacts secrets and truncates content;
-4. stores it exactly once (a dedup key makes repeated deliveries harmless);
-5. evaluates the policy rules and stores any flags.
-
-If the database is unavailable, the event goes to `spool.jsonl` and is stored on the next successful run, so failures become delays, not loss.
-
-**Privacy.** Triage stores what ran and where, not contents. File contents become a hash, a size and a short preview; tool output is cut to about 2,000 characters; common token formats and `key/secret/token/password = value` patterns are masked before anything is written. Events older than 7 days (configurable) are deleted each time `triage ui` starts, or when you run `triage purge`.
-
-## Commands
-
-| command | does |
-|---|---|
-| `triage install [--dry-run]` | add the hooks to `~/.claude/settings.json` (backup, diff, confirm); create the data dir and a default policy |
-| `triage uninstall` | remove Triage's hook entries (with a backup) |
-| `triage ui [--port]` | open the review inbox on 127.0.0.1 |
-| `triage doctor` | check that capture is healthy and print fixes in plain language |
-| `triage reeval [--since]` | re-run the rules after a policy change |
-| `triage purge` | delete events older than the retention period now |
+```bash
+uv sync && uv run pytest -q && uv run ruff check .
+cd web && pnpm install && pnpm test && pnpm build   # the built UI is committed in src/attention_triage/static/
+```
