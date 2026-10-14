@@ -197,6 +197,7 @@ def test_session_notice_warns_once_per_session_while_events_are_buffered(tmp_pat
     assert first.returncode == 0
     message = json.loads(first.stdout)["systemMessage"]
     assert "capture failing" in message and "unable to open database file" in message
+    assert message.endswith("Run `triage doctor`.")
     assert run_notice(tmp_path, "s1").stdout == b""  # resume / compact: same session, no repeat
     assert run_notice(tmp_path, "s2").stdout != b""  # a new session is told again
 

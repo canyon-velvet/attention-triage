@@ -3,13 +3,23 @@ isn't, in plain language. Each check returns a Result; any failure makes the com
 
 import json
 import os
+import re
 import shlex
 import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from attention_triage import cli, hook, policy, store
+from attention_triage.review import now
+
+# A hook error older than this is taken as dealt with, so doctor passes again once none recur.
+RECENT_ERRORS = timedelta(hours=24)
+# Drift last seen longer ago is taken as fixed (e.g. by an update): the retention period.
+RECENT_DRIFT = timedelta(days=store.RETENTION_DAYS)
+# hook.log_error starts each entry with its UTC time, then the traceback.
+ENTRY = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\S*) ", re.MULTILINE)
 
 
 @dataclass
@@ -17,6 +27,7 @@ class Result:
     ok: bool
     what: str  # what was checked, or what is wrong
     fix: str = ""  # what to run or change; failures only
+    warning: bool = False  # ok, but worth knowing: printed, doesn't fail doctor
 
 
 def hooks() -> Result:
@@ -107,7 +118,51 @@ def policy_file() -> Result:
     return Result(True, f"Policy valid: {policy.path()}")
 
 
-CHECKS = [hooks, database, spool, policy_file]
+def hook_errors() -> Result:
+    """Errors the hook logged in the last RECENT_ERRORS; the newest is named."""
+    log = store.data_dir() / "hook-errors.log"
+    text = log.read_text(errors="replace") if log.exists() else ""
+    since = datetime.now(UTC) - RECENT_ERRORS
+    entries = list(ENTRY.finditer(text))
+    recent = [m for m in entries if datetime.fromisoformat(m[1]) > since]
+    if not recent:
+        return Result(True, "No hook errors in the last 24 hours")
+    newest = recent[-1]
+    body = text[newest.end() : entries[-1].start() if newest is not entries[-1] else len(text)]
+    last = next((line for line in reversed(body.splitlines()) if line.strip()), "unknown error")
+    return Result(
+        False,
+        f"The hook logged {len(recent)} error(s) in the last 24 hours, the latest: {last.strip()}",
+        f"Fix what it names (full log: {log}). Doctor passes again once no new ones appear for"
+        " 24 hours.",
+    )
+
+
+def drift() -> list[Result]:
+    """Claude Code payload fields Triage relies on that went missing or changed type, seen in the
+    last RECENT_DRIFT. A warning: an update to Triage fixes it, not the user's setup."""
+    with closing(store.connect()) as conn:
+        rows = conn.execute(
+            "SELECT hook_event, field, problem, first_seen FROM drift"
+            " WHERE coalesce(last_seen, first_seen) > ? ORDER BY first_seen",
+            [now(datetime.now(UTC) - RECENT_DRIFT)],
+        ).fetchall()
+    if not rows:
+        return [Result(True, "Claude Code's hook format is as Triage expects")]
+    problems = {"missing": "missing", "type": "has an unexpected type"}
+    return [
+        Result(
+            True,
+            f"Claude Code's hook format changed: `{event}.{field}` {problems.get(problem, problem)}"
+            f" since {first_seen[:10]}. Re-record payloads with the recorder and update the"
+            " normalizer.",
+            warning=True,
+        )
+        for event, field, problem, first_seen in rows
+    ]
+
+
+CHECKS = [hooks, database, spool, policy_file, hook_errors, drift]
 
 
 def run() -> list[Result]:
@@ -116,7 +171,8 @@ def run() -> list[Result]:
     results = []
     for check in CHECKS:
         try:
-            results.append(check())
+            found = check()
+            results += found if isinstance(found, list) else [found]
         except Exception as e:
             results.append(
                 Result(

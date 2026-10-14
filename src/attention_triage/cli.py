@@ -80,7 +80,7 @@ def check_health() -> None:
 
     results = doctor.run()
     for result in results:
-        print(f"{'✓' if result.ok else '✗'} {result.what}")
+        print(f"{'!' if result.warning else '✓' if result.ok else '✗'} {result.what}")
         if result.fix:
             print(f"  Fix: {result.fix}")
     if not all(result.ok for result in results):
