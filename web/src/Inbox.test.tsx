@@ -58,7 +58,7 @@ test("with every flag cleared by hand, mark all reviewed still resets the window
   render(<Inbox />);
   fireEvent.click(await screen.findByRole("button", { name: "Mark all reviewed" }));
   await waitFor(() => expect(requests).toHaveLength(3)); // saved, then reloaded
-  expect(requests[1].body).toEqual({ flag_ids: [], as_of: AS_OF });
+  expect(requests[1].body).toEqual({ flag_ids: [], as_of: AS_OF, new_window: true });
 });
 
 test("the inbox says when the digest can't be loaded", async () => {
@@ -104,7 +104,7 @@ test("mark all reviewed sends the flags shown and when the page loaded", async (
   expect(requests[1]).toEqual({
     method: "POST",
     url: "/api/review/mark-all",
-    body: { flag_ids: [1, 2], as_of: AS_OF },
+    body: { flag_ids: [1, 2], as_of: AS_OF, new_window: true },
   });
 });
 
@@ -172,4 +172,91 @@ test("a capture problem is shown above the headline, with what to run", async ()
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent("Actions may be missing from this inbox. Run `triage doctor` for the fix.");
   expect(alert).toHaveTextContent("Hooks missing from /home/me/.claude/settings.json: PostToolUse");
+});
+
+function many(): Digest {
+  const bypass = (id: number, target: string) => ({ ...flag, id, target });
+  const domain = (id: number, target: string) => ({ ...flag, id, target, rule: "unlisted_domain" });
+  return {
+    ...digest(),
+    headline: { actions: 50, need_review: 4, suppressed: 0, since: null },
+    projects: [
+      { project: "/p/main", sessions: [{ session_id: "s1", flags: [bypass(1, "Docker PS"), domain(2, "curl https://x.dev")] }] },
+      { project: "/p/other", sessions: [{ session_id: "s2", flags: [bypass(3, "Docker run"), bypass(4, "make")] }] },
+    ],
+  };
+}
+
+const items = () => screen.getAllByRole("listitem").filter((li) => li.className.startsWith("flag"));
+
+test("flags narrow by rule, project and what ran, and the headline says how many are shown", async () => {
+  serve([many()]);
+  render(<Inbox />);
+  fireEvent.change(await screen.findByRole("combobox", { name: "Rule" }), { target: { value: "sandbox_bypass" } });
+  expect(items()).toHaveLength(3);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("50 actions · 3 shown of 4 need review");
+  fireEvent.change(screen.getByRole("combobox", { name: "Project" }), { target: { value: "/p/other" } });
+  expect(items()).toHaveLength(2);
+  fireEvent.change(screen.getByRole("searchbox", { name: "What ran contains" }), { target: { value: "DOCKER" } });
+  expect(items()).toHaveLength(1); // case-insensitive both ways: "Docker run" in /p/other
+  expect(screen.queryByRole("heading", { name: "/p/main" })).toBeNull();
+  fireEvent.change(screen.getByRole("searchbox", { name: "What ran contains" }), { target: { value: "<b>" } });
+  expect(screen.getByText("No flags match these filters.")).toBeInTheDocument();
+});
+
+test("clearing the filters brings back the full inbox", async () => {
+  serve([many()]);
+  render(<Inbox />);
+  fireEvent.change(await screen.findByRole("searchbox", { name: "What ran contains" }), { target: { value: "make" } });
+  expect(items()).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  expect(items()).toHaveLength(4);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("50 actions · 4 need review");
+  expect(screen.getByRole("button", { name: "Mark all reviewed" })).toBeInTheDocument();
+});
+
+test("with a filter on, marking reviewed sends only the shown flags and keeps the window", async () => {
+  const requests = serve([many()]);
+  render(<Inbox />);
+  fireEvent.change(await screen.findByRole("combobox", { name: "Rule" }), { target: { value: "unlisted_domain" } });
+  fireEvent.click(screen.getByRole("button", { name: "Mark 1 shown reviewed" }));
+  await waitFor(() => expect(requests).toHaveLength(3)); // saved, then reloaded
+  expect(requests[1].body).toEqual({ flag_ids: [2], as_of: AS_OF, new_window: false });
+});
+
+test("a filter that matched everything stays clearable after its flags are marked", async () => {
+  const empty = { ...many(), headline: { ...many().headline, need_review: 0 }, projects: [] };
+  const requests = serve([many(), empty]);
+  render(<Inbox />);
+  fireEvent.change(await screen.findByRole("searchbox", { name: "What ran contains" }), { target: { value: "a" } });
+  fireEvent.click(screen.getByRole("button", { name: /^Mark \d+ shown reviewed$/ }));
+  await waitFor(() => expect(requests).toHaveLength(3));
+  fireEvent.click(await screen.findByRole("button", { name: "Clear filters" }));
+  expect(screen.getByRole("button", { name: "Mark all reviewed" })).toBeInTheDocument(); // window resettable
+});
+
+test("a rule whose flags are all gone stops filtering", async () => {
+  const left = many();
+  left.projects = left.projects.map((p) => ({
+    ...p,
+    sessions: p.sessions.map((s) => ({ ...s, flags: s.flags.filter((f) => f.rule !== "unlisted_domain") })),
+  }));
+  serve([many(), left]);
+  render(<Inbox />);
+  fireEvent.change(await screen.findByRole("combobox", { name: "Rule" }), { target: { value: "unlisted_domain" } });
+  fireEvent.click(screen.getByRole("button", { name: "Mark 1 shown reviewed" }));
+  await waitFor(() => expect(items()).toHaveLength(3)); // all that's left, not "0 shown"
+  expect(screen.getByRole("combobox", { name: "Rule" })).toHaveValue("");
+});
+
+test("flags without a project can be filtered to", async () => {
+  const mixed = many();
+  mixed.projects.push({ project: null, sessions: [{ session_id: "s3", flags: [{ ...flag, id: 9, target: "ls" }] }] });
+  serve([mixed]);
+  render(<Inbox />);
+  const select = await screen.findByRole("combobox", { name: "Project" });
+  const none = screen.getByRole("option", { name: "No project" }) as HTMLOptionElement;
+  fireEvent.change(select, { target: { value: none.value } });
+  expect(items()).toHaveLength(1);
+  expect(screen.getByText("ls")).toBeInTheDocument();
 });

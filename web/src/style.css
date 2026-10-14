@@ -203,3 +203,14 @@ button:disabled {
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.filters input[type="search"] {
+  flex: 1 1 16rem;
+}

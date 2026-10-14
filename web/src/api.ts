@@ -77,11 +77,13 @@ export const dismissFlag = (id: number) => post(`/api/flags/${id}/dismiss`, { sc
 
 export const acknowledgeFlag = (id: number) => post(`/api/flags/${id}/ack`);
 
-// Only what this page shows: flags that arrived since stay open for the next review.
-export const markAllReviewed = (digest: Digest) =>
+// Only what this page shows: flags that arrived since stay open for the next review. A filtered
+// page (newWindow false) doesn't start a new review window: the flags it hides still wait.
+export const markAllReviewed = (digest: Digest, newWindow = true) =>
   post("/api/review/mark-all", {
     flag_ids: digest.projects.flatMap((p) => p.sessions.flatMap((s) => s.flags.map((f) => f.id))),
     as_of: digest.as_of,
+    new_window: newWindow,
   });
 
 // The shape of GET /api/suppressions (suppress.listing in src/attention_triage/suppress.py).

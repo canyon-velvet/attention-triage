@@ -105,13 +105,14 @@ class MarkAll(BaseModel):
 
     flag_ids: list[int]
     as_of: AwareDatetime
+    new_window: bool = True  # False when the page was filtered: the rest still wait
 
 
 @app.post("/api/review/mark-all")
 def mark_all(body: MarkAll) -> dict:
     at = min(body.as_of, datetime.now(UTC))  # a client can't start the window in the future
     with closing(store.connect()) as conn:
-        return {"dismissed": review.mark_all(conn, body.flag_ids, at)}
+        return {"dismissed": review.mark_all(conn, body.flag_ids, at, body.new_window)}
 
 
 @app.get("/api/suppressions")
