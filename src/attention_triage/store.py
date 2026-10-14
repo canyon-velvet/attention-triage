@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS drift (
     field TEXT NOT NULL,
     problem TEXT NOT NULL,
     first_seen TEXT NOT NULL,
+    last_seen TEXT,  -- NULL in rows recorded before it existed: read as first_seen
     PRIMARY KEY (hook_event, field, problem)
 );
 CREATE TABLE IF NOT EXISTS flags (
@@ -127,13 +128,19 @@ def connect() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
-    if "repo_root" not in [c[1] for c in conn.execute("PRAGMA table_info(events)")]:
-        try:  # a DB created before repo_root existed
-            conn.execute("ALTER TABLE events ADD COLUMN repo_root TEXT")
+    add_column(conn, "events", "repo_root")
+    add_column(conn, "drift", "last_seen")
+    return conn
+
+
+def add_column(conn: sqlite3.Connection, table: str, column: str) -> None:
+    """For a DB created before `column` existed."""
+    if column not in [c[1] for c in conn.execute(f"PRAGMA table_info({table})")]:
+        try:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
         except sqlite3.OperationalError as e:
             if "duplicate column" not in str(e):  # else a parallel hook added it first
                 raise
-    return conn
 
 
 def insert_event(conn: sqlite3.Connection, event: dict) -> bool:
@@ -179,10 +186,13 @@ def insert_flags(conn: sqlite3.Connection, flags: list[dict]) -> None:
 def record_drift(
     conn: sqlite3.Connection, hook_event: str | None, issues: list[tuple[str, str]], ts: str
 ) -> None:
-    """Remember each (event, field, problem) the first time it is seen, for `triage doctor`."""
+    """Remember each (event, field, problem): when it was first seen, and last seen, so `triage
+    doctor` reports only drift that is still happening."""
     conn.executemany(
-        "INSERT OR IGNORE INTO drift (hook_event, field, problem, first_seen) VALUES (?, ?, ?, ?)",
-        [(hook_event or "?", field, problem, ts) for field, problem in issues],
+        "INSERT INTO drift (hook_event, field, problem, first_seen, last_seen)"
+        " VALUES (?, ?, ?, ?, ?) ON CONFLICT (hook_event, field, problem)"  # named: SQLite < 3.35
+        " DO UPDATE SET last_seen = excluded.last_seen",
+        [(hook_event or "?", field, problem, ts, ts) for field, problem in issues],
     )
     conn.commit()
 

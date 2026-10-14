@@ -207,6 +207,7 @@ All four in v1:
      - *Only spooled failures:* errors before the spool step (bad stdin, a bug in `normalize`/`redact`, a failed spool write) lose the event and are only logged; the notice doesn't mention them.
      - *Hook never runs:* e.g. `triage-hook` uninstalled or its editable source moved. Nothing inside the hook can report this; `triage doctor` does (#20).
 4. **`triage doctor`** — checks hooks still present in settings, DB writable, spool empty, policy valid, recent hook errors; prints the fix in plain language.
+   - (#20) Exits 1 if any check fails. "Recent" hook errors are those of the last 24 hours, so doctor passes again once none recur. Hook-format drift (§10 spike fields that went missing or changed type) is a warning, not a failure: an update to Triage fixes it, not the user's setup. It is reported while seen in the last 7 days (`drift.last_seen`).
 
 ## 8. CLI
 

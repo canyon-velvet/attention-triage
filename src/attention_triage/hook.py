@@ -79,9 +79,9 @@ def session_notice() -> None:
         log = store.data_dir() / "hook-errors.log"
         lines = log.read_text().splitlines() if log.exists() else []
         reason = next((line for line in reversed(lines) if line.strip()), "unknown error")
-        # TODO(#20): point to `triage doctor` (SPEC §7) once it exists.
         message = (
-            f"attention-triage: capture failing ({reason[:200]}); events buffered. Details: {log}"
+            f"attention-triage: capture failing ({reason[:200]}); events buffered."
+            " Run `triage doctor`."
         )
         print(json.dumps({"systemMessage": message}))
         # Recorded after printing: if this write fails, the user is still told (just again later).
