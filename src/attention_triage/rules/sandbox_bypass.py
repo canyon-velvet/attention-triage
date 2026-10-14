@@ -2,7 +2,8 @@
 
 Labelled `retry-after-block` when the sandbox blocked the same program in this session shortly
 before, else `preemptive`. With async hooks the block can, rarely, be stored after the retry is
-checked; it is then labelled `preemptive` until `reeval` (#19).
+checked; it then stays labelled `preemptive` (still flagged): events are stamped when captured, so
+`reeval` sees the block as later too (SPEC.md §5, #19).
 """
 
 import os
