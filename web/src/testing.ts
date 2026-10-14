@@ -15,6 +15,7 @@ export const flag: Flag = {
   time: "2026-10-09T15:13:12.434+00:00",
   project: "/p/main/.claude/worktrees/wt",
   outcome: { kind: "ran", error: null },
+  guidance: { files: [], commits: [] },
 };
 
 afterEach(() => {
