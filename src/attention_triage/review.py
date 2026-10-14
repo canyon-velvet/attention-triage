@@ -17,16 +17,23 @@ def set_status(conn: sqlite3.Connection, flag_id: int, status: str) -> bool | No
     return False if conn.execute("SELECT 1 FROM flags WHERE id = ?", [flag_id]).fetchone() else None
 
 
-def mark_all(conn: sqlite3.Connection, flag_ids: list[int], at: datetime | None = None) -> int:
-    """Dismiss the listed flags that are still open, and start a new review window. Only the
-    flags the page showed: one that arrived after the page loaded stays open, unseen ones are
-    never cleared. Returns how many were dismissed."""
+def mark_all(
+    conn: sqlite3.Connection,
+    flag_ids: list[int],
+    at: datetime | None = None,
+    new_window: bool = True,
+) -> int:
+    """Dismiss the listed flags that are still open, and start a new review window unless the
+    page was filtered (`new_window` False: the rest still wait). Only the flags the page showed:
+    one that arrived after the page loaded stays open, unseen ones are never cleared. Returns how
+    many were dismissed."""
     ts = now(at)
     cursor = conn.executemany(
         "UPDATE flags SET status = 'dismissed', updated_at = ? WHERE id = ? AND status = 'open'",
         [(ts, flag_id) for flag_id in flag_ids],
     )
-    conn.execute("INSERT INTO reviews (reviewed_at) VALUES (?)", [ts])
+    if new_window:
+        conn.execute("INSERT INTO reviews (reviewed_at) VALUES (?)", [ts])
     conn.commit()
     return cursor.rowcount
 

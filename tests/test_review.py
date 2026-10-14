@@ -153,6 +153,16 @@ def test_mark_all_clears_only_the_flags_the_page_showed(conn):
     assert statuses(conn)[shown["s1-1"]] == "acknowledged"
 
 
+def test_a_filtered_mark_all_clears_only_its_flags_and_keeps_the_review_window(conn):
+    bash(conn, "/p/a", "s1", 1)
+    bash(conn, "/p/b", "s2", 2)
+    shown = open_flags(conn)
+    body = {"flag_ids": [shown["s1-1"]], "as_of": digest(conn)["as_of"], "new_window": False}
+    assert client().post("/api/review/mark-all", json=body).json() == {"dismissed": 1}
+    assert list(open_flags(conn)) == ["s2-2"]
+    assert review.last_review(conn) is None  # no new window: the rest still wait
+
+
 def test_mark_all_starts_a_new_review_window(conn):
     bash(conn, "/p/a", "s1", 10)
     bash(conn, "/p/a", "s1", 20, bypass=False)

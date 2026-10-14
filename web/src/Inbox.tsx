@@ -8,12 +8,14 @@ import {
   suppressFlag,
 } from "./api";
 import { FlagItem } from "./FlagItem";
+import { count, type Filter, live, NO_FILTER, narrow, projectValue } from "./filter";
 
 export function Inbox() {
   const [digest, setDigest] = useState<Digest>();
   const [error, setError] = useState<string>();
   const [actionError, setActionError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [chosen, setFilter] = useState<Filter>(NO_FILTER);
 
   // Loading only reads: the page changes review state only when a button is clicked.
   useEffect(() => {
@@ -46,6 +48,11 @@ export function Inbox() {
   if (error) return <p className="error">Couldn't load the digest: {error}</p>;
   if (!digest) return <p>Loading…</p>;
   const { actions, need_review, suppressed, since } = digest.headline;
+  const filter = live(digest, chosen);
+  const filtered = filter.rule || filter.project || filter.text.trim();
+  const shown = narrow(digest, filter);
+  const all = digest.projects.flatMap((p) => p.sessions.flatMap((s) => s.flags));
+  const rules = [...new Set(all.map((f) => f.rule))].sort();
   return (
     <main>
       <p>
@@ -62,7 +69,9 @@ export function Inbox() {
         </div>
       )}
       <h1>
-        {`${actions} actions · ${need_review} need review`}
+        {filtered
+          ? `${actions} actions · ${count(shown)} shown of ${need_review} need review`
+          : `${actions} actions · ${need_review} need review`}
         {suppressed > 0 && (
           <>
             {" · "}
@@ -78,12 +87,63 @@ export function Inbox() {
       {actionError && <p className="error">{actionError}</p>}
       {need_review === 0 && <p>Nothing needs review.</p>}
       {/* Also with no flags left (each cleared by hand), so the window can still be reset. */}
-      {(need_review > 0 || actions > 0) && (
-        <button type="button" disabled={busy} onClick={() => act(() => markAllReviewed(digest))}>
-          Mark all reviewed
-        </button>
+      {(need_review > 0 || filtered) && (
+        <div className="filters">
+          <select
+            aria-label="Rule"
+            value={filter.rule}
+            onChange={(e) => setFilter({ ...filter, rule: e.target.value })}
+          >
+            <option value="">All rules</option>
+            {rules.map((rule) => (
+              <option key={rule} value={rule}>
+                {rule}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Project"
+            value={filter.project}
+            onChange={(e) => setFilter({ ...filter, project: e.target.value })}
+          >
+            <option value="">All projects</option>
+            {digest.projects.map(({ project }) => (
+              <option key={projectValue(project)} value={projectValue(project)}>
+                {project ?? "No project"}
+              </option>
+            ))}
+          </select>
+          <input
+            type="search"
+            aria-label="What ran contains"
+            placeholder="Command, path or URL contains…"
+            value={filter.text}
+            onChange={(e) => setFilter({ ...filter, text: e.target.value })}
+          />
+          {filtered && (
+            <button type="button" onClick={() => setFilter(NO_FILTER)}>
+              Clear filters
+            </button>
+          )}
+        </div>
       )}
-      {digest.projects.map(({ project, sessions }) => (
+      {/* Also with no flags left (each cleared by hand), so the window can still be reset. A
+          filtered page clears only what it shows, and keeps the window: the rest still wait. */}
+      {filtered ? (
+        count(shown) > 0 && (
+          <button type="button" disabled={busy} onClick={() => act(() => markAllReviewed(shown, false))}>
+            {`Mark ${count(shown)} shown reviewed`}
+          </button>
+        )
+      ) : (
+        (need_review > 0 || actions > 0) && (
+          <button type="button" disabled={busy} onClick={() => act(() => markAllReviewed(digest))}>
+            Mark all reviewed
+          </button>
+        )
+      )}
+      {filtered && count(shown) === 0 && <p>No flags match these filters.</p>}
+      {shown.projects.map(({ project, sessions }) => (
         <section key={project ?? ""}>
           <h2>{project ?? "No project"}</h2>
           {sessions.map(({ session_id, flags }) => (

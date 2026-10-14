@@ -180,6 +180,7 @@ rules:
     - **Known limit:** the launcher list can't be complete (`find -exec`, `uv run`), so a prefix trusts its program; the form says so. Fix deferred.
   - **Acknowledge** ("seen; not fine; I'll handle it").
 - **Mark all reviewed** clears the rest. Opening the page clears nothing.
+- Filter (#78), in the page: rule and project dropdowns, and a text box matching what ran (command, path or URL), ignoring case. The headline says "12 shown of 128 need review". While filtering, "Mark 12 shown reviewed" dismisses only the shown flags and doesn't start a new review window: the rest still wait.
 - "N suppressed" count with a link to the Suppressions page.
 - Guidance, not action: for each item show files changed, the session's commits, and copy-ready git commands (`git -C <root> diff -- <file>`, `git restore <file>`, `git revert <sha>`). The UI never runs git or edits the policy.
   - Built from captured events at read time (#18), never by running git. Files: the flagged call's own (a file tool's path; for Bash, Claude Code's `changedFiles`). Commits: those the call or a later one in its session reports (`git commit` prints `[branch sha] subject`); best-effort. Commands use `git -C <project>` with shell-quoted paths, only for files inside a project that is (still) a git checkout; other files are listed without commands. A path that redaction cut is left out. An item with neither files nor commits shows no guidance. No per-item policy hint: it was the same for every item of a rule, and stopping a rule flagging something is what suppressions and their config suggestions are for.
@@ -271,7 +272,6 @@ Other observations:
 
   Don't build the adapter layer before a second agent is in scope.
 - Phone alerts for high-severity flags (ntfy/Pushover); trends dashboard.
-- Filter and search in the review UI.
 - **Plain-language risk explanations.** Each flag gets a risk level (low / medium / high, replacing v1's high / review) and one or two plain sentences for non-technical readers: why this could be dangerous, and when it's usually safe to ignore. Example: *"The agent ran `docker` outside the safety sandbox, so it could reach files and the network without the usual limits. Usually fine if you asked it to start containers for this project."* Two steps:
   1. Per-rule templates filled with the event's details (deterministic, cheap, unit-testable). Could land early, since v1 flags already carry a `reason` field.
   2. Optionally, an LLM-written explanation that uses session context. This makes part of the product an agent, so it starts with eval cases (flag → qualities the explanation must have) and tracing, per the "feature is an agent" practices.
