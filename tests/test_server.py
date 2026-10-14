@@ -27,6 +27,8 @@ def test_digest_endpoint_returns_the_digest():
     assert response.status_code == 200
     served = response.json()
     assert served.pop("as_of") >= expected.pop("as_of")  # when each digest was built
+    problems = served.pop("capture_problems")  # no hooks are installed in this HOME
+    assert problems and problems[0].startswith("Hooks missing from")
     assert served == expected and expected["headline"]["need_review"] == 1
 
 

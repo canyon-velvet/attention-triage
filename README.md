@@ -37,7 +37,7 @@ Claude Code ──(hook events, async)──▶ triage-hook ──▶ SQLite (~/
                                           └─▶ if the DB fails: append to spool.jsonl
 
 triage ui ──▶ FastAPI (127.0.0.1) ──▶ review inbox (React)
-                    └─ reads Claude Code transcripts to check capture coverage
+                    └─ warns in the inbox when `triage doctor` finds a capture problem
 ```
 
 - Python owns the hook, storage, rules, API and CLI; TypeScript is the UI only.

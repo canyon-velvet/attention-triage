@@ -34,9 +34,9 @@ export type Guidance = {
 
 export type Digest = {
   as_of: string; // when the digest was built; "mark all reviewed" starts the next window there
+  capture_problems: string[]; // from `triage doctor`'s read-only checks; empty when healthy
   headline: {
     actions: number;
-    captured: number;
     need_review: number;
     suppressed: number; // hidden by "this and future ones" since the last review
     since: string | null;
