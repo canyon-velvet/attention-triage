@@ -1,5 +1,6 @@
 """`triage ui`: the review inbox and its API (SPEC.md §6) on 127.0.0.1."""
 
+import sys
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import AwareDatetime, BaseModel
 
-from attention_triage import hook, review, store, suppress
+from attention_triage import hook, policy, review, store, suppress
 from attention_triage.digest import digest
 
 # Loopback only: the digest shows commands, paths and URLs from every project.
@@ -138,7 +139,13 @@ app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True
 
 def serve(port: int) -> None:
     """Store and flag spooled events first, so the digest isn't missing the ones the hook couldn't
-    store."""
+    store; then apply retention (SPEC §4)."""
     with closing(store.connect()) as conn:
         hook.flag(conn, store.ingest_spool(conn))
+        try:
+            store.purge(conn, policy.load()[0]["retention_days"])
+        # PolicyError, a file that isn't UTF-8 or can't be read: deleting by a default could remove
+        # days the user asked to keep, so nothing is purged and the UI still starts.
+        except (ValueError, OSError) as e:
+            print(f"policy.yaml is invalid, so old events were not deleted: {e}", file=sys.stderr)
     uvicorn.run(app, host=HOST, port=port)

@@ -1,4 +1,5 @@
-"""policy.yaml (SPEC.md §5): which rules run, and how severe their flags are.
+"""policy.yaml (SPEC.md §5): which rules run, how severe their flags are, and how many days of
+events are kept.
 
 The file is created with the defaults when missing. A rule it leaves out keeps its defaults. Unknown
 keys are rejected rather than ignored, so a typo like `sandbox_bypas: {enabled: false}` is reported
@@ -14,6 +15,7 @@ import yaml
 from attention_triage import store
 
 SEVERITIES = ("high", "review")
+MAX_RETENTION_DAYS = 36500
 # Settings of each built-in rule when policy.yaml doesn't name it. Each rule's ticket adds its own.
 DEFAULT_RULES = {
     "outside_project_write": {"enabled": True, "severity": "high", "allowed_paths": []},
@@ -35,9 +37,10 @@ DEFAULT_RULES = {
 }
 
 DEFAULT_POLICY = """\
-# Attention Triage policy. Flags record the policy_version (a hash of these settings) that made
-# them. severity: high | review
+# Attention Triage policy. Flags record the policy_version (a hash of the rules' settings) that
+# made them. severity: high | review
 version: 1
+retention_days: 7  # events (and their flags) older than this are deleted
 rules:
   outside_project_write:
     enabled: true
@@ -90,7 +93,14 @@ def parse(text: str) -> tuple[dict, str]:
     # type() check: YAML `true` and `1.0` both equal 1 in Python.
     if type(data.get("version")) is not int or data["version"] != 1:
         raise PolicyError("`version` must be 1")
-    check_keys("policy", data, {"version", "rules"})
+    check_keys("policy", data, {"version", "rules", "retention_days"})
+    retention = data.get("retention_days", store.RETENTION_DAYS)
+    # type(): YAML `true` is 1 in Python. At most a century: that keeps everything in practice,
+    # while the purge cutoff (now - retention_days) must stay a date Python can represent.
+    if type(retention) is not int or not 1 <= retention <= MAX_RETENTION_DAYS:
+        raise PolicyError(
+            f"`retention_days` must be a whole number of days, from 1 to {MAX_RETENTION_DAYS}"
+        )
     # Only an empty value means "defaults": `false` must not quietly leave the rules on.
     rules = {} if data.get("rules") is None else data["rules"]
     if not isinstance(rules, dict):
@@ -123,8 +133,11 @@ def parse(text: str) -> tuple[dict, str]:
         ):
             raise PolicyError(f"`{rule_id}.allowed_domains` must be a list of hosts or *.hosts")
         normalized["rules"][rule_id] = settings
+    # The version names the rules' settings that made a flag: keeping events longer changes none.
     canonical = json.dumps(normalized, sort_keys=True)
-    return normalized, hashlib.sha256(canonical.encode()).hexdigest()[:12]
+    return {**normalized, "retention_days": retention}, hashlib.sha256(
+        canonical.encode()
+    ).hexdigest()[:12]
 
 
 def check_keys(where: str, found: dict, known) -> None:

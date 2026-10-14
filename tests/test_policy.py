@@ -92,3 +92,26 @@ def test_version_changes_when_a_setting_changes():
 def test_an_invalid_policy_is_rejected(text):
     with pytest.raises(policy.PolicyError):
         policy.parse(text)
+
+
+def test_retention_days_defaults_to_7_and_doesnt_change_the_version():
+    loaded, version = policy.parse(policy.DEFAULT_POLICY)
+    assert loaded["retention_days"] == 7
+    left_out, same = policy.parse(policy.DEFAULT_POLICY.replace("retention_days: 7", ""))
+    assert left_out["retention_days"] == 7
+    longer, also_same = policy.parse(
+        policy.DEFAULT_POLICY.replace("retention_days: 7", "retention_days: 30")
+    )
+    assert longer["retention_days"] == 30
+    assert version == same == also_same  # the version names the rules' settings
+
+
+def test_retention_days_can_keep_a_century():
+    century = policy.DEFAULT_POLICY.replace("retention_days: 7", "retention_days: 36500")
+    assert policy.parse(century)[0]["retention_days"] == 36500
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "1.5", "true", "seven", "[]", "36501", "1000000"])
+def test_retention_days_must_be_a_whole_number_of_days(value):
+    with pytest.raises(policy.PolicyError, match="retention_days"):
+        policy.parse(policy.DEFAULT_POLICY.replace("retention_days: 7", f"retention_days: {value}"))
