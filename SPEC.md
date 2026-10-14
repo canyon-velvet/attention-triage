@@ -132,7 +132,7 @@ rules:
                       localhost, 127.0.0.1, "::1"]   # localhost entries: this machine
 ```
 
-`policy_version` = hash of the normalized file. Every flag stores the version that produced it. `triage reeval [--since]` re-runs rules over stored events, replacing open flags from older versions (dismissed/acknowledged state is kept where the same rule still fires).
+`policy_version` = hash of the normalized file. Every flag stores the version that produced it. `triage reeval [--since]` re-runs rules over stored events (#19): it adds the flags they lack (a tightened policy, an insert that failed), corrects those that differ while keeping their status, and reopens a flag left suppressed by a deleted suppression. It never removes a flag; after loosening the policy, clear old flags in the inbox. Path rules see the disk and settings files as they are now; a flag's recorded path is kept, as it names the file the write really reached. `--since` takes a local date or date-time.
 
 ### Flag record
 `rule_id`, `severity`, `reason` (human sentence), `label` (rule-specific, below), `evidence` (JSON), `policy_version`, `status` (`open` / `dismissed` / `acknowledged` / `suppressed`), `suppression_id`, timestamps.
@@ -156,7 +156,7 @@ rules:
 ### R2 — `sandbox_bypass`
 - `Bash` `PreToolUse` with `tool_input.dangerouslyDisableSandbox == true` → flag.
 - Label `retry-after-block` if the same session has a recent `PostToolUseFailure` whose `error` looks like a sandbox denial (contains `Operation not permitted`, or a `<sandbox_violations>` block for network denials; see §10) and whose command shares the same program (first word); evidence includes that error and the original command. Otherwise label `preemptive`.
-- Race note: with async hooks, the failure event could in rare cases be written after the retry is evaluated; `reeval` corrects it.
+- Race note: with async hooks, the failure event could in rare cases be stored after the retry is evaluated, leaving it labelled `preemptive`; it is still flagged high. `reeval` can't correct this: payloads carry no time, so events are stamped when captured, and the late failure's stamp is after the retry's. It takes a failure hook delayed longer than the agent's next model turn (measured hook start to stamp: 36–148 ms), so it is rare (#19).
 
 ### R3 — `config_edit`
 - File-writing tools targeting: `~/.claude/settings.json`, `~/.claude/settings.local.json`, `<project>/.claude/settings.json`, `<project>/.claude/settings.local.json`, anything under `~/.claude/hooks/` or `<project>/.claude/hooks/`, script files referenced as hook commands in those settings, and `~/.attention-triage/**` (self-protection: the agent editing Triage's own policy or DB).
