@@ -1,5 +1,5 @@
 """triage: install and uninstall the capture hook in Claude Code's user settings (ADR-0004), serve
-the review UI, and re-check stored events against the policy."""
+the review UI, re-check stored events against the policy, and check that capture is healthy."""
 
 import argparse
 import copy
@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> None:
     install_parser = commands.add_parser("install", help="add the capture hook to Claude Code")
     install_parser.add_argument("--dry-run", action="store_true", help="show the diff only")
     commands.add_parser("uninstall", help="remove Triage's hook entries")
+    commands.add_parser("doctor", help="check that capture is healthy")
     ui_parser = commands.add_parser("ui", help="serve the review API on 127.0.0.1")
     ui_parser.add_argument("--port", type=int, default=server.DEFAULT_PORT)
     reeval_parser = commands.add_parser("reeval", help="re-check stored events against the policy")
@@ -47,6 +48,8 @@ def main(argv: list[str] | None = None) -> None:
         uninstall()
     elif args.command == "reeval":
         recheck(args.since)
+    elif args.command == "doctor":
+        check_health()
     else:
         server.serve(args.port)
 
@@ -69,6 +72,19 @@ def recheck(since: str | None) -> None:
         f"reeval: {counts['added']} added, {counts['corrected']} corrected,"
         f" {counts['reopened']} reopened (policy {counts['policy_version'][:7]})"
     )
+
+
+def check_health() -> None:
+    """One line per check; a failure adds what to do. Exits 1 if any check failed."""
+    from attention_triage import doctor  # it reads this module's install details
+
+    results = doctor.run()
+    for result in results:
+        print(f"{'✓' if result.ok else '✗'} {result.what}")
+        if result.fix:
+            print(f"  Fix: {result.fix}")
+    if not all(result.ok for result in results):
+        sys.exit(1)
 
 
 def install(dry_run: bool) -> None:
