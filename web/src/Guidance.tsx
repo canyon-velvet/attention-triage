@@ -1,10 +1,12 @@
 import { useState } from "react";
 import type { Guidance as GuidanceData } from "./api";
 
-// "Fix it" for one inbox item: what to look at and copy-ready commands. Triage runs none of them
-// (ADR-0002); the server built and quoted them. Captured text renders as text only.
+// "Fix it" for one inbox item: what its call changed, with copy-ready commands. Triage runs none of
+// them (ADR-0002); the server built and quoted them. Captured text renders as text only. An item
+// that changed no files and made no commits has nothing to fix here, so it shows nothing.
 export function Guidance({ guidance }: { guidance: GuidanceData }) {
-  const { files, commits, policy } = guidance;
+  const { files, commits } = guidance;
+  if (!files.length && !commits.length) return null;
   return (
     <details className="guidance">
       <summary>Fix it</summary>
@@ -38,10 +40,6 @@ export function Guidance({ guidance }: { guidance: GuidanceData }) {
           </ul>
         </>
       )}
-      <h4>Policy</h4>
-      <p>
-        {policy.hint} <span className="caveat">Setting <code>{policy.key}</code> in {policy.file}</span>
-      </p>
     </details>
   );
 }

@@ -15,15 +15,7 @@ export const flag: Flag = {
   time: "2026-10-09T15:13:12.434+00:00",
   project: "/p/main/.claude/worktrees/wt",
   outcome: { kind: "ran", error: null },
-  guidance: {
-    files: [],
-    commits: [],
-    policy: {
-      file: "/home/me/.attention-triage/policy.yaml",
-      key: "rules.sandbox_bypass.enabled",
-      hint: "To stop this rule, set rules.sandbox_bypass.enabled: false.",
-    },
-  },
+  guidance: { files: [], commits: [] },
 };
 
 afterEach(() => {

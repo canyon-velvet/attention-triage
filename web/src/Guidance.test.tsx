@@ -13,7 +13,6 @@ const full: GuidanceData = {
     { path: "/srv/notes.txt", commands: [] },
   ],
   commits: [{ sha: "1a2b3c4", subject: "Fix it", command: "git -C /p/main revert 1a2b3c4" }],
-  policy: flag.guidance.policy,
 };
 
 test("each changed file in the checkout gets its commands, others say to check by hand", () => {
@@ -25,13 +24,11 @@ test("each changed file in the checkout gets its commands, others say to check b
   expect(outside.querySelector("button")).toBeNull();
 });
 
-test("later commits get a revert command, and the policy setting is named", () => {
+test("later commits get a revert command", () => {
   render(<Guidance guidance={full} />);
   const commit = screen.getByText("1a2b3c4").closest("li")!;
   expect(commit).toHaveTextContent("1a2b3c4 Fix it");
   expect(commit).toHaveTextContent("git -C /p/main revert 1a2b3c4");
-  expect(screen.getByText("rules.sandbox_bypass.enabled")).toBeInTheDocument();
-  expect(screen.getByText(/To stop this rule/)).toBeInTheDocument();
 });
 
 test("copy puts the command on the clipboard", async () => {
@@ -44,9 +41,7 @@ test("copy puts the command on the clipboard", async () => {
   expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
 });
 
-test("with no files or commits only the policy is shown", () => {
-  render(<Guidance guidance={flag.guidance} />);
-  expect(screen.queryByText("Files it changed")).toBeNull();
-  expect(screen.queryByText("Commits since")).toBeNull();
-  expect(screen.getByText("Policy")).toBeInTheDocument();
+test("an item that changed nothing has no Fix it section", () => {
+  const { container } = render(<Guidance guidance={flag.guidance} />);
+  expect(container).toBeEmptyDOMElement();
 });
