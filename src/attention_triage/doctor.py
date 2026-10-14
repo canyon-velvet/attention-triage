@@ -5,9 +5,11 @@ import json
 import os
 import shlex
 import shutil
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 
-from attention_triage import cli
+from attention_triage import cli, hook, policy, store
 
 
 @dataclass
@@ -56,7 +58,56 @@ def capturing(handler: dict) -> bool:
     return "--session-notice" not in shlex.split(handler["command"])
 
 
-CHECKS = [hooks]
+def database() -> Result:
+    """The DB opens and takes the write lock; nothing is written."""
+    path = store.data_dir() / "triage.db"
+    try:
+        with closing(store.connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.rollback()
+    except (sqlite3.Error, OSError) as e:  # OSError: the data dir can't be created
+        return Result(
+            False,
+            f"Can't write to {path}: {e}",
+            f"Check that {store.data_dir()} is yours and writable; if the database is locked, close"
+            " other programs using it and try again.",
+        )
+    return Result(True, f"Database writable: {path}")
+
+
+def spool() -> Result:
+    """Events the DB couldn't take are stored now, as the next hook run would."""
+    try:
+        with closing(store.connect()) as conn:
+            hook.flag(conn, store.ingest_spool(conn))
+    except Exception as e:  # a DB error, or a spooled line that isn't an event
+        return Result(
+            False,
+            f"Buffered events in {store.spool_path()} can't be stored: {e!r}",
+            "Fix the database problem above, then run `triage doctor` again.",
+        )
+    if store.spool_path().exists():  # a hook spooled again just now: storing is still failing
+        return Result(
+            False,
+            f"Buffered events are still waiting in {store.spool_path()}",
+            f"See {store.data_dir() / 'hook-errors.log'} for why, then run `triage doctor` again.",
+        )
+    return Result(True, "No buffered events waiting")
+
+
+def policy_file() -> Result:
+    try:
+        policy.load()
+    except (ValueError, OSError) as e:  # PolicyError, or a file that isn't UTF-8
+        return Result(
+            False,
+            f"{policy.path()} is invalid: {e}",
+            "Correct it, or delete the file to get the default policy back.",
+        )
+    return Result(True, f"Policy valid: {policy.path()}")
+
+
+CHECKS = [hooks, database, spool, policy_file]
 
 
 def run() -> list[Result]:
