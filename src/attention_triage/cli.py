@@ -1,5 +1,5 @@
-"""triage: install and uninstall the capture hook in Claude Code's user settings (ADR-0004), and
-serve the review UI."""
+"""triage: install and uninstall the capture hook in Claude Code's user settings (ADR-0004), serve
+the review UI, and re-check stored events against the policy."""
 
 import argparse
 import copy
@@ -8,10 +8,12 @@ import json
 import shlex
 import shutil
 import sys
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
-from attention_triage import server, store
+from attention_triage import policy, review, server, store
+from attention_triage.reeval import reeval
 
 HOOK = "triage-hook"
 TOOL_EVENTS = [
@@ -32,13 +34,41 @@ def main(argv: list[str] | None = None) -> None:
     commands.add_parser("uninstall", help="remove Triage's hook entries")
     ui_parser = commands.add_parser("ui", help="serve the review API on 127.0.0.1")
     ui_parser.add_argument("--port", type=int, default=server.DEFAULT_PORT)
+    reeval_parser = commands.add_parser("reeval", help="re-check stored events against the policy")
+    reeval_parser.add_argument(
+        "--since",
+        type=local_time,
+        help="only events after this local date or time, e.g. 2026-10-12",
+    )
     args = parser.parse_args(argv)
     if args.command == "install":
         install(args.dry_run)
     elif args.command == "uninstall":
         uninstall()
+    elif args.command == "reeval":
+        recheck(args.since)
     else:
         server.serve(args.port)
+
+
+def local_time(text: str) -> str:
+    """A date or date-time in local time, as the UTC timestamp events are stored with."""
+    try:
+        return review.now(datetime.fromisoformat(text))  # a naive time is read as local
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a date or time: {text!r}") from None
+
+
+def recheck(since: str | None) -> None:
+    try:
+        with closing(store.connect()) as conn:
+            counts = reeval(conn, since)
+    except policy.PolicyError as e:
+        sys.exit(f"policy.yaml is invalid, so nothing was changed: {e}")
+    print(
+        f"reeval: {counts['added']} added, {counts['corrected']} corrected,"
+        f" {counts['reopened']} reopened (policy {counts['policy_version'][:7]})"
+    )
 
 
 def install(dry_run: bool) -> None:

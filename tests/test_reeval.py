@@ -1,9 +1,11 @@
+import os
+import time
 from contextlib import closing
 from itertools import count
 
 import pytest
 
-from attention_triage import hook, policy, review, store, suppress
+from attention_triage import cli, hook, policy, review, store, suppress
 from attention_triage.normalize import normalize
 from attention_triage.redact import redact
 from attention_triage.reeval import reeval
@@ -120,11 +122,13 @@ def test_running_it_twice_changes_nothing_the_second_time(conn):
     assert list(conn.iterdump()) == before
 
 
-def test_an_invalid_policy_changes_nothing(conn):
+def test_an_invalid_policy_changes_nothing(conn, capsys):
     bypass(conn, flag=False)
     set_policy("severity: review", "severity: urgent")
     with pytest.raises(policy.PolicyError):
         reeval(conn)
+    with pytest.raises(SystemExit, match="policy.yaml is invalid, so nothing was changed"):
+        cli.main(["reeval"])
     assert flags(conn) == []
 
 
@@ -172,3 +176,30 @@ def test_a_suppression_undone_while_it_runs_hides_no_new_flag(conn, monkeypatch)
     monkeypatch.setattr(suppress, "apply", undo_meanwhile)
     assert reeval(conn)["added"] == 1
     assert [status for _, status, _, _ in flags(conn)] == ["dismissed", "open"]
+
+
+@pytest.fixture
+def tokyo():
+    """Local time UTC+9 (no daylight saving) for the test, then back to what it was."""
+    old = os.environ.get("TZ")
+    os.environ["TZ"] = "Asia/Tokyo"
+    time.tzset()
+    yield
+    if old is None:
+        del os.environ["TZ"]
+    else:
+        os.environ["TZ"] = old
+    time.tzset()
+
+
+def test_since_is_read_as_a_local_date_or_time(tokyo):
+    assert cli.local_time("2026-10-12") == "2026-10-11T15:00:00.000+00:00"
+    assert cli.local_time("2026-10-12 09:30") == "2026-10-12T00:30:00.000+00:00"
+    with pytest.raises(SystemExit):
+        cli.main(["reeval", "--since", "last week"])
+
+
+def test_the_command_prints_the_counts(conn, capsys):
+    bypass(conn, flag=False)
+    cli.main(["reeval"])
+    assert capsys.readouterr().out.startswith("reeval: 1 added, 0 corrected, 0 reopened (policy ")
