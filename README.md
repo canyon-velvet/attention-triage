@@ -45,7 +45,7 @@ The inbox lists open flags by project and session, high severity first: what ran
 
 - **Fine — this one only** dismisses it; **Acknowledge** means "seen, not fine, I'll handle it".
 - **Fine — this and future ones** creates a suppression: later matches (exact, or a widened command prefix or folder) are stored as suppressed. The **Suppressions** page lists them with hit counts, suggests a config change for recurring ones, and can undo them.
-- **Fix it** (for a file write, a command that changed files, or one followed by commits) gives copy-ready `git diff`, `git restore` and `git revert` commands. Triage never runs them.
+- **Fix it** (when the action changed files or was followed by commits) gives copy-ready `git diff`, `git restore` and `git revert` commands. Triage never runs them.
 
 **Mark all reviewed** clears the page and starts a new review window. Filter by rule, project or what ran (command, path or URL) to work through a long inbox; marking then clears only what's shown.
 

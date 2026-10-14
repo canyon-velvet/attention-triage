@@ -49,7 +49,11 @@ def guidance(conn) -> list[dict]:
 
 def test_a_file_in_the_checkout_gets_quoted_diff_and_restore_commands(conn, repo):
     call(
-        conn, repo, "Write", {"file_path": str(repo / ".claude" / "settings.json"), "content": "{}"}
+        conn,
+        repo,
+        "Write",
+        {"file_path": str(repo / ".claude" / "settings.json"), "content": "{}"},
+        {},
     )
     [found] = guidance(conn)
     git = f"git -C {shlex.quote(str(repo))}"
@@ -66,7 +70,7 @@ def test_a_file_in_the_checkout_gets_quoted_diff_and_restore_commands(conn, repo
 
 
 def test_a_file_outside_the_checkout_gets_no_git_commands(conn, repo):
-    call(conn, repo, "Write", {"file_path": "/srv/notes.txt", "content": "x"})  # not a temp dir
+    call(conn, repo, "Write", {"file_path": "/srv/notes.txt", "content": "x"}, {})  # not a temp dir
     [found] = guidance(conn)
     assert found["files"] == [{"path": "/srv/notes.txt", "commands": []}]
 
@@ -105,7 +109,11 @@ def test_without_a_git_checkout_there_are_no_commands(conn, repo, tmp_path):
 
 def test_a_checkout_deleted_since_gets_no_commands(conn, repo):
     call(
-        conn, repo, "Write", {"file_path": str(repo / ".claude" / "settings.json"), "content": "{}"}
+        conn,
+        repo,
+        "Write",
+        {"file_path": str(repo / ".claude" / "settings.json"), "content": "{}"},
+        {},
     )
     (repo / ".git").rmdir()
     [found] = guidance(conn)
@@ -123,3 +131,32 @@ def test_a_path_that_redaction_cut_is_left_out(conn, repo):
 def test_a_call_that_changed_nothing_has_no_guidance(conn, repo):
     call(conn, repo, "WebFetch", {"url": "https://unlisted.example/x", "prompt": "read"})
     assert guidance(conn) == [{"files": [], "commits": []}]
+
+
+def test_a_file_write_that_never_ran_has_no_guidance(conn, repo):
+    """Denied at the prompt, or still running: no result, so nothing changed."""
+    call(
+        conn, repo, "Write", {"file_path": str(repo / ".claude" / "settings.json"), "content": "{}"}
+    )
+    assert guidance(conn) == [{"files": [], "commits": []}]
+
+
+def test_a_call_without_an_id_never_takes_another_calls_result(conn, repo):
+    """A drifted payload stores tool_use_id as NULL; a later call's result has none either."""
+    for name, extra in [
+        ("PreToolUse", {}),
+        ("PreToolUse", {}),
+        ("PostToolUse", {"tool_response": {}}),
+    ]:
+        payload = {
+            "hook_event_name": name,
+            "session_id": "s1",
+            "cwd": str(repo),
+            "tool_name": "Write",
+        }
+        path = str(repo / ".claude" / ("settings.json" if not extra else "other.json"))
+        payload |= {"tool_input": {"file_path": path, "content": "{}"}, **extra}
+        event = normalize(redact(payload), now=T0 + timedelta(seconds=next(SECONDS)))
+        store.insert_event(conn, event)
+        hook.flag(conn, [event])
+    assert all(found["files"] == [] for found in guidance(conn))

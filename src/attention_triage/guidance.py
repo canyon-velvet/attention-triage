@@ -33,11 +33,13 @@ def guidance(conn: sqlite3.Connection, event_key: str, evidence: dict) -> dict:
         [session_id, tool_use_id, ts],
     ).fetchall()
     responses = [(t, r, json.loads(raw).get("tool_response")) for t, r, raw in results]
-    if tool in FILE_TOOLS:
-        changed = [evidence.get("path") or target]  # the path as the rule resolved it
+    # This call's result; none if denied, failed or running. A drifted call without an id has no
+    # result of its own (None == None would match another call's, as SQL's NULL never does).
+    own = [resp for t, _, resp in responses if tool_use_id is not None and t == tool_use_id]
+    if tool in FILE_TOOLS:  # the path as the rule resolved it, once the write really ran
+        changed = [evidence.get("path") or target] if own else []
     else:  # Claude Code lists the files a Bash command changed
-        own = [resp for t, _, resp in responses if t == tool_use_id and isinstance(resp, dict)]
-        diff = own[0].get("bashEditDiff") if own else None
+        diff = own[0].get("bashEditDiff") if own and isinstance(own[0], dict) else None
         changed = diff.get("changedFiles", []) if isinstance(diff, dict) else []
     return {
         "files": [file(root, p) for p in changed if isinstance(p, str) and not HIDDEN.search(p)],
