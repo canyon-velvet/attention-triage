@@ -1,5 +1,10 @@
 # Attention Triage
 
+[![CI](https://github.com/canyon-velvet/attention-triage/actions/workflows/ci.yml/badge.svg)](https://github.com/canyon-velvet/attention-triage/actions/workflows/ci.yml)
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 See the few Claude Code actions that need your decision, without reading the whole transcript.
 
 > **Status:** v1 works end to end on macOS and Linux. Not yet published; install from a clone.
@@ -18,7 +23,7 @@ Attention Triage records every action and shows **only the ones its policy flags
 ## Quick start
 
 ```bash
-git clone https://github.com/canyon-velvet/attention-triage && cd attention_triage
+git clone https://github.com/canyon-velvet/attention-triage && cd attention-triage
 uv tool install .        # provides `triage` and `triage-hook`
 triage install           # adds the hooks to ~/.claude/settings.json (backup, diff, confirm)
 ```
