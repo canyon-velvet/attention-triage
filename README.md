@@ -18,7 +18,7 @@ Attention Triage records every action and shows **only the ones its policy flags
 ## Quick start
 
 ```bash
-git clone https://github.com/canyon-velvet/attention_triage && cd attention_triage
+git clone https://github.com/canyon-velvet/attention-triage && cd attention_triage
 uv tool install .        # provides `triage` and `triage-hook`
 triage install           # adds the hooks to ~/.claude/settings.json (backup, diff, confirm)
 ```
